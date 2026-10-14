@@ -1,0 +1,13 @@
+{
+  "posts": [
+    {
+      "title": "Sterling 1.1 już wyszedł!",
+      "text": "Nowy model MądraAI z jeszcze większą wiedzą o świecie oraz nowymi informacjami dostępny już teraz!",
+      "important": true
+    },
+    {
+      "title": "Witaj w MądraAI",
+      "text": "To prosta sztuczna inteligencja rozwijana na podstawie tekstów oraz przykładów pytań i odpowiedzi. Wybierz model i rozpocznij rozmowę."
+    }
+  ]
+}
