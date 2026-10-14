@@ -1,0 +1,4 @@
+CREATE TABLE IF NOT EXISTS daily_questions (
+  day TEXT PRIMARY KEY,
+  questions INTEGER NOT NULL DEFAULT 0
+);
