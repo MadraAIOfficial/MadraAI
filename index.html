@@ -1,0 +1,322 @@
+<!doctype html><html lang="pl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>MądraAI</title><style>*{box-sizing:border-box}html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#101114;color:#e9e9ed;font:15px system-ui}button,select{font:inherit;color:inherit;background:#202126;border:1px solid #34353c;border-radius:10px;padding:9px 12px;cursor:pointer}.app{height:100dvh;display:grid;grid-template-rows:62px minmax(0,1fr) 96px}.top{display:flex;align-items:center;padding:0 20px;background:#15161a;border-bottom:1px solid #292a30}.brandLogo{width:158px;height:auto;max-height:42px;object-fit:contain}.right{display:flex;align-items:center;gap:8px;margin-left:auto}.status{font-size:12px;color:#999ba4}.chat{width:100%;height:100%;min-height:0;margin:0;padding:24px clamp(16px,4vw,64px);overflow-y:auto;overflow-x:hidden;overscroll-behavior:contain;display:flex;flex-direction:column;gap:14px}.welcome{margin:auto;text-align:center;color:#999ba4;line-height:1.6}.welcome h1{color:#eee;font-size:25px;font-weight:600}.message{display:flex;align-items:flex-start;gap:10px;width:100%;max-width:100%;flex:none}.message.user{align-self:flex-end;flex-direction:row-reverse}.avatar{width:34px;height:34px;flex:none;border-radius:50%;background:#292a30;border:1px solid #45464e;display:grid;place-items:center;overflow:hidden}.avatar img{width:22px;height:25px;object-fit:contain}.avatar.userAvatar img{width:100%;height:100%;object-fit:cover}.msgContent{min-width:0;width:max-content;max-width:calc(100% - 44px);display:flex;flex-direction:column;align-items:flex-start;gap:4px}.message.user .msgContent{align-items:flex-end}.speaker{font-size:11px;color:#999ba4;padding:0 3px}.bubble{width:fit-content;max-width:100%;padding:13px 16px;border-radius:16px;line-height:1.55;white-space:pre-wrap;overflow-wrap:break-word}.bubble.user{background:#37383f}.bubble.bot{background:#1d1e23;border:1px solid #303138}.warn{max-width:100%;border:1px solid #aa4a4a;background:#351e21;color:#ffc2c2;border-radius:10px;padding:8px 11px;font-size:12px}.thinking{display:flex;align-items:center;gap:9px;color:#c8c9d0;font-size:13px;padding:3px 4px}.spinner{width:17px;height:17px;border:2px solid #45464e;border-top-color:#e0bd68;border-radius:50%;animation:spin .75s linear infinite;flex:none}.thinkingPercent{color:#e0bd68;font-variant-numeric:tabular-nums;min-width:36px}.thinkingTrack{height:3px;width:92px;background:#37383f;border-radius:5px;overflow:hidden}.thinkingBar{height:100%;width:0;background:#e0bd68;transition:width .15s ease}@keyframes spin{to{transform:rotate(360deg)}}.compose{width:100%;margin:auto;padding:10px clamp(12px,3vw,48px) 18px}.row{display:flex;gap:9px;background:#191a1f;border:1px solid #35363d;border-radius:15px;padding:7px}.row textarea{flex:1;resize:none;min-width:0;max-height:100px;border:0;outline:none;background:transparent;color:#f2f2f3;font:inherit;padding:10px}.send{background:#e0bd68;color:#1b180f;border:0;font-weight:700;padding:0 20px}.hint{text-align:center;color:#777984;font-size:11px;margin-top:7px}@media(max-width:650px){.top{padding:0 10px}.right{gap:4px}.right>*{font-size:11px;padding:7px}.status{display:none}.chat{padding:16px 10px}.bubble{max-width:100%}}</style></head><body><div class="app"><header class="top"><img class="brandLogo" src="Vectors/M%C4%85draAI%20Full%20Logo.svg" alt="MądraAI"><div class="right"><span id="status" class="status">Wczytywanie…</span><select id="models" aria-label="Wybierz model"></select></div></header><section id="chat" class="chat"><div class="welcome"><img src="Vectors/M%C4%85draAI%20Full%20Logo.svg" alt="" style="width:170px;height:auto"><h1>Rozpocznij rozmowę</h1><div>Wybierz model i napisz wiadomość.</div></div></section><footer class="compose"><div class="row"><textarea id="input" rows="1" placeholder="Napisz wiadomość…"></textarea><button id="send" class="send">Wyślij</button></div><div class="hint">MądraAI korzysta z wiedzy zapisanej w wybranym modelu.</div></footer></div><script>
+/*
+ * MądraAI — wskazówki naturalnego języka polskiego.
+ * To nie jest baza gotowych odpowiedzi. Zasady pomagają składać czytelne
+ * wypowiedzi z materiałów modelu; przy braku dopasowania układa krótką
+ * kontynuację rozmowy zamiast wyświetlać odmowę odpowiedzi.
+ */
+window.MadraLanguage = (() => {
+  'use strict';
+  const rules = Object.freeze([
+    'Odpowiadaj po polsku, naturalnie i wprost na wiadomość rozmówcy.',
+    'Korzystaj z wytrenowanych przykładów; nie doklejaj ogólnych formuł do każdego tematu.',
+    'Przy krótkiej reakcji odczytaj ją w kontekście poprzedniej wypowiedzi.',
+    'Dbaj o zgodność rodzaju, liczby, przypadków, interpunkcję i polskie znaki.',
+    'Nie powtarzaj całej odpowiedzi z materiału, jeśli da się przekazać jej sens krócej.'
+  ]);
+  const clean = value => String(value ?? '').replace(/\s+/g, ' ').trim();
+  function topicFrom(question) {
+    let topic = clean(question)
+      .replace(/^[\s"'„”]+|[\s"'„”?!.,]+$/gu, '')
+      .replace(/^(?:czy\s+)?(?:możesz\s+(?:mi\s+)?(?:proszę\s+)?powiedzieć|powiedz\s+mi|wyjaśnij|opisz|wytłumacz)\s+/iu, '')
+      .replace(/^(?:co\s+to\s+jest|czym\s+jest|kim\s+jest|co\s+oznacza|co\s+znaczy)\s+/iu, '')
+      .replace(/^(?:proszę\s+)?(?:powiedz|wyjaśnij|opisz)\s+/iu, '')
+      .replace(/[?!.,]+$/gu, '').trim();
+    if (topic.length > 72) topic = topic.slice(0, 69).replace(/\s+\S*$/u, '') + '…';
+    return topic;
+  }
+  function composeFallback(question, conversation = []) {
+    const topic = topicFrom(question);
+    const normalized = clean(question).toLocaleLowerCase('pl').replace(/[.!?…]+$/u, '').trim();
+    const previous = [...conversation].reverse().find(item => item?.role === 'assistant' && item.text)?.text || '';
+    if (/^(?:tak|ta|no|aha|aa|a ok|ok|okej|jasne|rozumiem|no dobra)$/iu.test(normalized)) {
+      if (/[?؟]$/.test(clean(previous))) return 'Dobrze, rozumiem — kontynuuję w tym kierunku.';
+      if (/^(?:aha|aa|ok|okej|jasne|rozumiem)$/iu.test(normalized)) return 'Aha, jasne. Mamy już wspólny punkt odniesienia.';
+      return 'Jasne — przyjmuję to i odnoszę się do wcześniejszego wątku.';
+    }
+    if (!topic) return 'Jasne, rozumiem. Odnoszę tę wiadomość do tego, o czym rozmawialiśmy przed chwilą.';
+    if (previous) return `Rozumiem, pytasz teraz o „${topic}”. Łączę to z wcześniejszym wątkiem rozmowy.`;
+    return `Rozumiem, że chodzi Ci o „${topic}”. Ujmę odpowiedź możliwie prosto i konkretnie.`;
+  }
+  function polish(text) {
+    let result = clean(text);
+    if (!result) return '';
+    result = result.replace(/\s+([,.;:!?])/gu, '$1').replace(/([,.;:!?])(?=\S)/gu, '$1 ');
+    result = result[0].toLocaleUpperCase('pl') + result.slice(1);
+    if (!/[.!?…]$/u.test(result)) result += '.';
+    return result;
+  }
+  return Object.freeze({ rules, topicFrom, composeFallback, polish });
+})();
+
+/*
+ * MądraAI — lokalny silnik odpowiedzi
+ *
+ * Ten moduł działa w przeglądarce i korzysta wyłącznie z danych wybranego
+ * modelu. Nie udaje generowania tekstu słowo po słowie: najpierw ocenia
+ * przykłady treningowe i źródła wiedzy, a następnie wybiera krótką odpowiedź
+ * z najlepiej dopasowanego materiału. Gdy nie ma dobrego dopasowania, układa
+ * krótką kontynuację rozmowy przy użyciu wskazówek językowych.
+ */
+window.MadraAI = (() => {
+  'use strict';
+
+  const STOP = new Set((
+    'a aby albo ale aż bardziej bez bo być by była było były będzie będą ' +
+    'bardzo ci co czego czy dla do gdzie go i ich ile im inny ja jak jaka ' +
+    'jakie jaki jako je jeden jest jeszcze już kiedy kto która które który ' +
+    'którzy ma mam mamy masz mnie mi mimo moja moje mój na nad nam nami ' +
+    'nas nasi nie nich nim niż no o od on ona one oni ono oraz po pod ' +
+    'pomóż proszę przed przy się są ta tak takie taki te tego tej ten teraz ' +
+    'to tu ty u w we więc z za ze że żeby wy was wasz właśnie wiem wiesz ' +
+    'wszystko sobie czytać napisz powiedz opisz wyjaśnij oznacza znaczy ' +
+    'odpowiedz odpowiedź pytanie pytam czym kim czym czyż'
+  ).split(/\s+/));
+
+  const normalize = value => String(value ?? '').toLocaleLowerCase('pl')
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/ł/g, 'l').replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+  const rawWords = value => normalize(value).split(/\s+/).filter(Boolean);
+  const stem = word => {
+    const w = normalize(word);
+    if (w.length <= 4) return w;
+    return w.replace(/(owego|owej|owych|owymi|ami|ach|owie|ego|emu|owej|owa|owe|ych|ymi|asz|enie|anie|ami|om|em|ie|y|a|u|ę|ą|i)$/u, '');
+  };
+  const greetingWords = new Set(['czesc', 'hej', 'hejka', 'siema', 'elo', 'witaj']);
+  const tokens = value => unique(rawWords(value).filter(word => word.length > 1 && !STOP.has(word))
+    .map(word => greetingWords.has(word) ? 'intent-powitanie' : stem(word)).filter(Boolean));
+  const unique = values => [...new Set(values)];
+  const yieldToBrowser = () => new Promise(resolve => requestAnimationFrame(resolve));
+  const turnCounts = new Map();
+
+  function varyWording(value, key) {
+    const text = answerText(value, 2, 60);
+    if (!text) return text;
+    if (/^(cześć|czesc|hej|hejka|siema|elo|witaj)[!.]?$/iu.test(text)) {
+      const keyForGreeting = 'greeting:' + key;
+      const turn = turnCounts.get(keyForGreeting) || 0;
+      turnCounts.set(keyForGreeting, turn + 1);
+      return ['Cześć!', 'Hej!', 'Siema!'][turn % 3];
+    }
+    const social = /^(nie ma za co|bardzo mi miło|miło mi|dzięki|dziekuje|dziękuję|cześć|czesc|hej|jasne|spoko|świetnie|swietnie|oczywiście|oczywiscie)\b/iu.test(text) || /\b(pomóc|pomoge|miło|milo|cieszę|ciesze)\b/iu.test(text);
+    // Nie doklejaj nagłówków do podziękowań, powitań ani krótkich reakcji.
+    if (social || (text.match(/\S+/gu) || []).length < 9) return text;
+    const turn = turnCounts.get(key) || 0;
+    turnCounts.set(key, turn + 1);
+    const firstWord = text.match(/^\p{L}+/u)?.[0] || '';
+    const acronym = firstWord.length > 1 && firstWord === firstWord.toLocaleUpperCase('pl');
+    const lower = acronym ? text : text[0].toLocaleLowerCase('pl') + text.slice(1);
+    const variants = [
+      'W skrócie: ' + text,
+      'Najprościej mówiąc, ' + lower,
+      'Chodzi o to, że ' + lower,
+      'Można to ująć tak: ' + text,
+      'Sedno jest takie: ' + text
+    ];
+    return variants[turn % variants.length].replace(/\s+/g, ' ').trim() || text;
+  }
+
+  function conversationalReply(q, conversation = []) {
+    const text = normalize(q);
+    const key = 'fallback:' + (tokens(q).slice(0, 3).join('-') || 'rozmowa');
+    const turn = turnCounts.get(key) || 0;
+    turnCounts.set(key, turn + 1);
+    if (/\b(dzieki|dziekuje|thx)\b/u.test(text)) {
+      return ['Nie ma za co! Jeśli chcesz, możemy iść dalej.', 'Jasne — cieszę się, że mogłem pomóc.', 'Spoko! Napisz, gdy będziesz chcieć coś jeszcze omówić.'][turn % 3];
+    }
+    if (/\b(czesc|hej|hejka|siema|witaj)\b/u.test(text)) {
+      return ['Cześć! Co dziś masz na myśli?', 'Hej! O czym chcesz porozmawiać?', 'Siema! Napisz, od czego zaczynamy.'][turn % 3];
+    }
+    return window.MadraLanguage?.composeFallback(q, conversation) || 'Jasne, rozumiem. Odnoszę tę wiadomość do wcześniejszego wątku.';
+  }
+
+  function isPoliteConversation(q) {
+    const text = normalize(q);
+    return /\b(dzieki|dziekuje|thx|czesc|hej|hejka|siema|witaj|dobranoc|milego dnia)\b/u.test(text);
+  }
+
+  function lexicalMatch(a, b) {
+    if (a === b) return 1;
+    if (!a || !b || Math.min(a.length, b.length) < 4) return 0;
+    if (a.startsWith(b) || b.startsWith(a)) return Math.min(a.length, b.length) / Math.max(a.length, b.length);
+    return 0;
+  }
+
+  function overlap(query, text) {
+    const q = unique(tokens(query)), t = unique(tokens(text));
+    if (!q.length || !t.length) return { score: 0, coverage: 0, hits: 0, query: q };
+    let hits = 0;
+    for (const term of q) if (t.some(candidate => lexicalMatch(term, candidate) >= .78)) hits++;
+    const coverage = hits / q.length;
+    const precision = hits / Math.max(1, Math.min(q.length, t.length));
+    return { score: coverage * .78 + precision * .22, coverage, hits, query: q };
+  }
+
+  function answerText(value, maxSentences = 2, maxWords = 72) {
+    const text = String(value || '').replace(/\s+/g, ' ').trim();
+    if (!text) return '';
+    const sentences = text.match(/[^.!?]+[.!?]+|[^.!?]+$/gu)?.map(s => s.trim()).filter(Boolean) || [text];
+    let selected = sentences.slice(0, maxSentences).join(' ');
+    const words = selected.match(/\S+/gu) || [];
+    if (words.length > maxWords) {
+      selected = words.slice(0, maxWords).join(' ').replace(/[,:;—-]+$/u, '') + '…';
+    }
+    return selected;
+  }
+
+  function rank(q, pairs = []) {
+    const query = tokens(q);
+    if (!query.length) return [];
+    return pairs.map((pair, index) => {
+      // Automatycznie zapisana przez poprzednią wersję odpowiedź nie jest
+      // przykładem poprawności. Używaj jej dopiero po dobrej ocenie.
+      if (pair?.memory && Number(pair.rating || 0) < 3) return null;
+      if (Number(pair?.rating) > 0 && Number(pair.rating) <= 2) return null;
+      const match = overlap(q, pair?.q || '');
+      // Jedno słowo merytoryczne wymaga zgodności z nazwą przykładu.
+      // Dzięki temu „co to jest natura?” nie dopasuje losowego artykułu.
+      const exact = normalize(q) === normalize(pair?.q || '');
+      return { p: pair, i: index, s: exact ? 1 : match.score, coverage: match.coverage, hits: match.hits };
+    }).filter(Boolean).sort((a, b) => b.s - a.s || b.coverage - a.coverage);
+  }
+
+  function sentencesOf(document) {
+    const text = String(document?.text || '').replace(/\s+/g, ' ').trim();
+    return text.match(/[^.!?]+[.!?]+|[^.!?]+$/gu)?.map(s => s.trim()).filter(Boolean) || [];
+  }
+
+  async function searchKnowledge(q, documents, onProgress) {
+    const query = unique(tokens(q));
+    if (!query.length || !documents?.length) { onProgress(95); return null; }
+    const candidates = [];
+    for (let i = 0; i < documents.length; i++) {
+      const doc = documents[i] || {};
+      const titleMatch = overlap(q, doc.title || '');
+      const bodyMatch = overlap(q, doc.text || '');
+      const sentences = sentencesOf(doc);
+      const rankedSentences = sentences.map((sentence, index) => ({
+        sentence, index, ...overlap(q, sentence)
+      })).sort((a, b) => b.score - a.score || b.hits - a.hits);
+      const bestSentence = rankedSentences[0];
+      // Jeśli pytanie ma tylko jeden istotny wyraz, wymagamy go w tytule.
+      // Przy dłuższych pytaniach wymagamy kilku zgodnych pojęć w zdaniu.
+      const eligible = query.length === 1
+        ? titleMatch.hits === 1 && titleMatch.coverage === 1
+        : bestSentence && bestSentence.hits >= Math.min(2, query.length) && bestSentence.coverage >= .55;
+      if (eligible) candidates.push({ doc, sentences, titleMatch, bodyMatch, rankedSentences, bestSentence,
+        score: bestSentence.score * .72 + titleMatch.score * .2 + bodyMatch.score * .08 });
+      onProgress(48 + Math.round((i + 1) / documents.length * 47));
+      if ((i + 1) % 10 === 0 && i + 1 < documents.length) await yieldToBrowser();
+    }
+    candidates.sort((a, b) => b.score - a.score);
+    const best = candidates[0];
+    if (!best) return null;
+
+    // Zwracamy najwyżej dwa powiązane zdania z jednego źródła. Drugie zdanie
+    // jest dodawane tylko wtedy, gdy rzeczywiście dotyczy tych samych pojęć.
+    const chosen = [best.bestSentence];
+    const next = best.rankedSentences.find(item => item.index !== best.bestSentence.index &&
+      item.score >= Math.max(.34, best.bestSentence.score - .2));
+    if (next && best.bestSentence.coverage >= .7) chosen.push(next);
+    chosen.sort((a, b) => a.index - b.index);
+    return { text: answerText(chosen.map(item => item.sentence).join(' '), 2, 64), score: best.score,
+      document: best.doc.title || '' };
+  }
+
+  async function prepare(q, pairs = [], knowledge = [], onProgress = () => {}, conversation = []) {
+    const report = value => { try { onProgress(Math.max(0, Math.min(100, value))); } catch {} };
+    report(0);
+    await yieldToBrowser();
+    const ranked = rank(q, pairs).filter(item => typeof item.p?.a === 'string' && item.p.a.trim());
+    report(35);
+    const best = ranked[0];
+    const source = await searchKnowledge(q, knowledge, report);
+    report(97);
+
+    // Pewny przykład treningowy ma pierwszeństwo. Wybór wariantu uwzględnia
+    // ocenę, ale podobieństwo pytania pozostaje głównym kryterium.
+    if (best && best.s >= .67 && best.coverage >= .7) {
+      const near = ranked.filter(item => item.s >= Math.max(.67, best.s - .08) && item.coverage >= .7);
+      const rated = near.sort((a, b) => (Number(b.p.rating) || 3) - (Number(a.p.rating) || 3));
+      const picked = rated[0] || best;
+      return { text: varyWording(picked.p.a, 'answer:' + normalize(picked.p.a)), warning: false, generate: false, index: picked.i };
+    }
+
+    if (source && source.score >= .55) {
+      return { text: varyWording(source.text, 'answer:' + normalize(source.text)), warning: source.score < .72, generate: false, index: -1, source: source.document };
+    }
+
+    if (best && best.s >= .42 && best.coverage >= .55) {
+      return { text: varyWording(best.p.a, 'answer:' + normalize(best.p.a)), warning: true, generate: false, index: best.i };
+    }
+
+    return { text: conversationalReply(q, conversation), warning: !isPoliteConversation(q), generate: false, index: -1 };
+  }
+
+  async function generate(q, pairs, sourceIndex, emit, onProgress = () => {}, conversation = []) {
+    const ranked = rank(q, pairs || []).filter(item => item.p?.a);
+    const chosen = ranked.find(item => item.i === sourceIndex) || ranked[0];
+    const text = chosen && chosen.s >= .42 ? varyWording(chosen.p.a, 'answer:' + normalize(chosen.p.a)) : conversationalReply(q, conversation);
+    const chunks = text.match(/\S+\s*/gu) || [text];
+    for (let i = 0; i < chunks.length; i++) {
+      await emit(chunks[i]);
+      onProgress(Math.round((i + 1) / chunks.length * 100));
+      if (i < chunks.length - 1) await yieldToBrowser();
+    }
+  }
+
+  async function loadTextKnowledge(path = '/Baza%20do%20importu.txt') {
+    try {
+      const response = await fetch(path, { cache: 'no-store' });
+      if (!response.ok) return [];
+      const raw = await response.text();
+      return raw.split(/^\s*---+\s*$/m).map(block => {
+        const match = block.trim().match(/^TYTUŁ:\s*(.+?)\s*\nTEKST:\s*([\s\S]+)$/iu);
+        return match ? { title: match[1].trim(), text: match[2].trim() } : null;
+      }).filter(Boolean);
+    } catch { return []; }
+  }
+
+  function mergeKnowledge(model, extra) {
+    const combined = [...(Array.isArray(model?.knowledge) ? model.knowledge : [])];
+    const existing = new Set(combined.map(item => normalize(item.title) + '|' + normalize(item.text)));
+    for (const item of extra || []) {
+      const key = normalize(item.title) + '|' + normalize(item.text);
+      if (!existing.has(key)) { combined.push(item); existing.add(key); }
+    }
+    if (model) model.knowledge = combined;
+    return combined;
+  }
+
+  function forceReply(q, pairs = [], knowledge = [], conversation = []) {
+    const rankedPairs = rank(q, pairs).filter(item => typeof item.p?.a === 'string' && item.p.a.trim());
+    const usablePair = rankedPairs.find(item => item.hits > 0 && item.s >= .12);
+    if (usablePair) return varyWording(usablePair.p.a, 'forced:' + normalize(usablePair.p.a));
+
+    const candidates = [];
+    for (const document of knowledge || []) {
+      const titleScore = overlap(q, document?.title || '');
+      for (const sentence of sentencesOf(document)) {
+        const match = overlap(q, sentence);
+        if (match.hits > 0) candidates.push({ sentence, score: match.score + titleScore.score * .18 });
+      }
+    }
+    candidates.sort((a, b) => b.score - a.score);
+    if (candidates.length) return varyWording(candidates[0].sentence, 'forced:' + normalize(candidates[0].sentence));
+
+    return window.MadraLanguage?.composeFallback(q, conversation) || 'Jasne, rozumiem. Odnoszę tę wiadomość do wcześniejszego wątku.';
+  }
+
+  return { prepare, rank, generate, loadTextKnowledge, mergeKnowledge, forceReply };
+})();
+
+const PUBLISHED_MODELS=['Sterling 1.0.mai'];let models=[],sending=false,conversation=[];const $=s=>document.querySelector(s);
+function decodeModelFile(raw,fallback){if(!raw.startsWith('MDA1:'))throw Error('Nieprawidłowy plik modelu');const hex=raw.slice(5).trim(),bytes=new Uint8Array(hex.length/2);for(let i=0;i<bytes.length;i++)bytes[i]=(parseInt(hex.slice(i*2,i*2+2),16)-((i*37+19)&255)+256)&255;const m=JSON.parse(new TextDecoder().decode(bytes));m.name=m.name||fallback;m.pairs=Array.isArray(m.pairs)?m.pairs:[];m.memory=Array.isArray(m.memory)?m.memory:[];m.ratings=Array.isArray(m.ratings)?m.ratings:[];m.knowledge=Array.isArray(m.knowledge)?m.knowledge:[];return m}
+function renderModels(){$('#models').innerHTML=models.map((m,i)=>'<option value="'+i+'">'+String(m.name).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))+'</option>').join('')||'<option value="">Brak modeli</option>'}
+async function load(){models=[];for(const file of [...PUBLISHED_MODELS].sort((a,b)=>b.localeCompare(a,'pl',{numeric:true,sensitivity:'base'}))){try{const r=await fetch('Models/'+encodeURIComponent(file),{cache:'no-store'});if(r.ok)models.push(decodeModelFile(await r.text(),file.replace(/\.mai$/i,'')))}catch{}}renderModels();$('#status').textContent=models.length?models.length+' modeli':'Nie udało się wczytać modeli'}
+function scroll(){const c=$('#chat');c.scrollTop=c.scrollHeight}
+function add(text,who){document.querySelector('.welcome')?.remove();const row=document.createElement('div');row.className='message '+(who==='user'?'user':'bot');const av=document.createElement('div');av.className='avatar'+(who==='user'?' userAvatar':'');const img=document.createElement('img');img.src=who==='user'?'Images/User.png':'Vectors/M%C4%85draAI%20Icon.svg';img.alt='';av.append(img);const content=document.createElement('div');content.className='msgContent';const label=document.createElement('div');label.className='speaker';label.textContent=who==='user'?'Ty':'MądraAI';const bubble=document.createElement('div');bubble.className='bubble '+(who==='user'?'user':'bot');bubble.textContent=text;content.append(label,bubble);row.append(av,content);$('#chat').append(row);scroll();return{content,bubble}}
+function showThinking(content){const line=document.createElement('div');line.className='thinking';const spin=document.createElement('span');spin.className='spinner';const label=document.createElement('span');label.textContent='Analizuję pytanie i wiedzę';const track=document.createElement('span');track.className='thinkingTrack';const bar=document.createElement('span');bar.className='thinkingBar';track.append(bar);const percent=document.createElement('span');percent.className='thinkingPercent';percent.textContent='0%';line.append(spin,label,track,percent);content.append(line);return n=>{n=Math.max(0,Math.min(100,Math.round(n)));percent.textContent=n+'%';bar.style.width=n+'%';scroll()}}
+const nextFrame=()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
+async function send(){if(sending)return;const q=$('#input').value.replace(/\s+/gu,' ').trim();if(!q)return;sending=true;$('#send').disabled=true;$('#input').value='';add(q,'user');const{content,bubble}=add('','bot'),progress=showThinking(content);let warning=false;try{await nextFrame();const model=models[Number($('#models').value)];if(!model)throw Error('Nie udało się wczytać wybranego modelu.');const pairs=[...(model.pairs||[]),...(model.memory||[]).map(item=>({...item,rating:item.rating||2,memory:true}))];const result=await MadraAI.prepare(q,pairs,model.knowledge||[],progress,conversation);warning=!!result.warning;bubble.textContent=warning&&result.index<0?MadraAI.forceReply(q,pairs,model.knowledge||[],conversation):(result.text||MadraLanguage.composeFallback(q,conversation));conversation.push({role:'user',text:q},{role:'assistant',text:bubble.textContent});conversation=conversation.slice(-12);if(warning){const n=document.createElement('div');n.className='warn';n.textContent=result.index<0?'Odpowiedź została ułożona z dostępnych skojarzeń i kontekstu; może być mniej trafna.':'Model miał problem z tą wiadomością. Odpowiedź może być niepoprawna.';content.append(n)}progress(100)}catch(e){bubble.textContent=e?.message||'Nie udało się przygotować odpowiedzi.';const n=document.createElement('div');n.className='warn';n.textContent='Model miał problem z tą wiadomością. Odpowiedź może być niepoprawna.';content.append(n);progress(100)}finally{content.querySelector('.thinking')?.remove();scroll();sending=false;$('#send').disabled=false;$('#input').focus()}}
+$('#send').onclick=send;$('#input').onkeydown=e=>{if(e.key==='Enter'&&!e.shiftKey&&!e.isComposing&&!e.repeat){e.preventDefault();send()}};load();</script></body></html>
