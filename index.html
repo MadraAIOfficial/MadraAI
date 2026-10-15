@@ -174,11 +174,10 @@ window.MadraAI = (() => {
     const acronym = firstWord.length > 1 && firstWord === firstWord.toLocaleUpperCase('pl');
     const lower = acronym ? text : text[0].toLocaleLowerCase('pl') + text.slice(1);
     const variants = [
-      'W skrócie: ' + text,
-      'Najprościej mówiąc, ' + lower,
-      'Chodzi o to, że ' + lower,
-      'Można to ująć tak: ' + text,
-      'Sedno jest takie: ' + text
+      text,
+      'Krótko mówiąc, ' + lower,
+      text,
+      'Mówiąc wprost: ' + text
     ];
     return variants[turn % variants.length].replace(/\s+/g, ' ').trim() || text;
   }
@@ -438,9 +437,63 @@ function usesSterling12(modelName){
   const[major,minor]=match[1].split('.').map(Number);
   return major>1||(major===1&&(minor||0)>=2);
 }
+const sterling12WordingTurns=new Map();
+function varyKnowledgeWording12(text,modelName){
+  const key=String(modelName||'Sterling 1.2').toLocaleLowerCase('pl');
+  const turn=sterling12WordingTurns.get(key)||0;
+  sterling12WordingTurns.set(key,turn+1);
+  const variants=[
+    [/\bznana\b/giu,['słynna','rozpoznawalna']],
+    [/\bznany\b/giu,['słynny','rozpoznawalny']],
+    [/\bznanych\b/giu,['słynnych','rozpoznawalnych']],
+    [/\bznanego\b/giu,['słynnego','rozpoznawalnego']],
+    [/\bznanej\b/giu,['słynnej','rozpoznawalnej']],
+    [/\bznanym\b/giu,['słynnym','rozpoznawalnym']],
+    [/\bpopularnego\b/giu,['dobrze znanego','głośnego']],
+    [/\bpopularna\b/giu,['powszechnie znana','ceniona']],
+    [/\bpopularny\b/giu,['słynny','powszechnie znany']],
+    [/\bpopularne\b/giu,['szeroko znane','cenione']],
+    [/\bpopularnych\b/giu,['znanych','cenionych']],
+    [/\bcharyzmatyczna\b/giu,['wyrazista','pełna energii']],
+    [/\bcharyzmatyczny\b/giu,['wyrazisty','pełen energii']],
+    [/\bbezkompromisowe\b/giu,['stanowcze','ostre']],
+    [/\bbezkompromisowa\b/giu,['stanowcza','ostra']],
+    [/\bbezkompromisowy\b/giu,['stanowczy','ostry']],
+    [/\bcharakterystyczne\b/giu,['typowe','rozpoznawalne']],
+    [/\bcharakterystyczna\b/giu,['typowa','rozpoznawalna']],
+    [/\bcharakterystyczny\b/giu,['typowy','rozpoznawalny']],
+    [/\blicznych\b/giu,['wielu']],
+    [/\bkryzysowych\b/giu,['trudnych','wymagających']],
+    [/\s+oraz\s+/giu,[', a także ',' i ']]
+  ];
+  let result=String(text||'');
+  variants.forEach(([pattern,forms],ruleIndex)=>{
+    let wordIndex=0;
+    result=result.replace(pattern,match=>{
+      let form=forms[(turn+ruleIndex+wordIndex++)%forms.length];
+      if(match===match.toLocaleUpperCase('pl'))form=form.toLocaleUpperCase('pl');
+      else if(/^\p{Lu}/u.test(match))form=form[0].toLocaleUpperCase('pl')+form.slice(1);
+      return form;
+    });
+  });
+  return result;
+}
+const sterling12EmojiTurns=new Map();
+function addSterling12Emoji(text,modelName){
+  if(!usesSterling12(modelName))return text;
+  const key=String(modelName).toLocaleLowerCase('pl');
+  const storageKey='madraai-sterling12-emoji:'+key;
+  let turn=sterling12EmojiTurns.get(key)||0;
+  try{const saved=Number(localStorage.getItem(storageKey));if(Number.isInteger(saved)&&saved>=0)turn=saved;localStorage.setItem(storageKey,String((turn+1)%4))}catch{}
+  sterling12EmojiTurns.set(key,(turn+1)%4);
+  const apology=/\bprzepraszam\b|\bprzykro mi\b|\bmoja wina\b|\bnie chciałem\b|\bnie chciałam\b|\bpomyliłem się\b|\bpomyliłam się\b/iu.test(String(text||''));
+  const emojis=apology?['😓','😔','😟','😶‍🌫️']:['😎','😀','😁','😆'];
+  const clean=String(text||'').trim().replace(/[ \t]*(?:😎|😀|😁|😆)\s*$/u,'');
+  return clean?clean+' '+emojis[turn%emojis.length]:emojis[turn%emojis.length];
+}
 const manualEmojiCounts=new Map();
 function addManualPairEmoji(text,question,modelName){
-  if(!usesExpandedReplies(modelName))return text;
+  if(!usesExpandedReplies(modelName)||usesSterling12(modelName))return text;
   const key=String(modelName)+'|'+String(question||'').trim().toLocaleLowerCase('pl');
   const turn=manualEmojiCounts.get(key)||0;manualEmojiCounts.set(key,turn+1);
   const choices=['😎',null,'😀','😁',null,'😆'];
@@ -448,25 +501,100 @@ function addManualPairEmoji(text,question,modelName){
   return emoji?String(text||'').trim()+' '+emoji:text;
 }
 const followupCounts=new Map();
-function addNewModelFollowup(answer,question,modelName){
+// Dla Sterling 1.2 zachowujemy niewykorzystane zdania z ostatniego źródła,
+// aby odpowiedź na „tak" mogła rozwinąć temat bez powtarzania wcześniejszej treści.
+let pendingMore=null;
+const moreYes=/^(?:tak|także|jasne|pewnie|chętnie|chetnie|poproszę|poprosze|więcej|wiecej|opowiedz więcej|opowiedz wiecej|powiedz więcej|powiedz wiecej|daj więcej|daj wiecej)[.!?… ]*$/iu;
+const moreNo=/^(?:nie|nie dzięki|nie dzieki|nie, dzięki|nie, dzieki|wystarczy|to wszystko|na razie nie|nie trzeba)[.!?… ]*$/iu;
+const morePrompts=[
+  'Chcesz poznać dodatkowe informacje na ten temat? Napisz po prostu tak lub nie.',
+  'Czy chcesz usłyszeć o tym coś więcej? Napisz po prostu tak lub nie.',
+  'Interesuje Cię szersze spojrzenie na tę sprawę? Napisz po prostu tak lub nie.',
+  'Chcesz, żebym podał Ci więcej danych? Napisz po prostu tak lub nie.',
+  'Chcesz wiedzieć o tym coś jeszcze? Napisz po prostu tak lub nie.',
+  'Masz ochotę zgłębić ten temat? Napisz po prostu tak lub nie.',
+  'Czy interesuje Cię, jak to wygląda w praktyce? Napisz po prostu tak lub nie.'
+];
+const noThanks=[
+  'Dobrze, w czym innym mogę Ci pomóc?',
+  'Okej, potrzebujesz pomocy z czymś innym?',
+  'Jasne. Jeśli pojawi się inny temat, napisz śmiało.',
+  'Rozumiem. Masz może inne pytanie?',
+  'W porządku. Co jeszcze mogę dla Ciebie zrobić?',
+  'Nie ma sprawy. Z czym jeszcze mogę pomóc?',
+  'Dobrze, daj znać, jeśli będziesz potrzebować czegoś innego.',
+  'Okej. Czy jest coś jeszcze, w czym mogę Ci pomóc?',
+  'Jasne, zostawmy ten temat. Masz inne pytanie?'
+];
+const noThanksTurns=new Map();
+function isMoreYes(q){return moreYes.test(String(q||'').trim())}
+function isMoreNo(q){return moreNo.test(String(q||'').trim())}
+function endsWithMorePrompt(text){return morePrompts.some(prompt=>String(text||'').trim().endsWith(prompt))}
+function stopAfterNoMoreDetails(text){
+  const reply=String(text||'');
+  const marker=/Nie mam już w tym materiale kolejnych szczegółów do dodania\.?/iu;
+  const match=marker.exec(reply);
+  if(!match)return reply;
+  pendingMore=null;
+  return reply.slice(0,match.index+match[0].length).trim();
+}
+function answerMore(q){
+  if(!pendingMore)return null;
+  if(isMoreNo(q)){
+    const key=pendingMore.model.toLocaleLowerCase('pl');const turn=noThanksTurns.get(key)||0;noThanksTurns.set(key,turn+1);
+    pendingMore=null;return noThanks[turn%noThanks.length];
+  }
+  if(!isMoreYes(q))return null;
+  const batch=pendingMore.remaining.splice(0,2).join(' ').trim();
+  if(!pendingMore.remaining.length)pendingMore=null;
+  if(!batch)return 'Nie mam już w tym materiale kolejnych szczegółów do dodania.';
+  const text=varyKnowledgeWording12(batch,pendingMore?.model||'Sterling 1.2');
+  return pendingMore?text+' '+morePrompts[(pendingMore.turn++)%morePrompts.length]:text+' Mam nadzieję, że te dodatkowe informacje pomogły.';
+}
+function addNewModelFollowup(answer,question,modelName,fromKnowledge=false){
   if(!usesExpandedReplies(modelName))return answer;
+  if(!fromKnowledge)return answer;
   const q=String(question||'').trim();
   const social=/^(?:hej|hejka|siema|cześć|czesc|elo|witaj|dzięki|dziekuje|dziękuję|dobranoc)[!.?…]*$/iu.test(q);
-  const asks=/[?？]/u.test(q)||/^(?:co|czym|kto|kim|jak|jaki|jaka|jakie|dlaczego|czemu|czy|gdzie|kiedy|ile|który|która|które)(?:\s|$)/iu.test(q);
-  if(!asks||social)return answer;
+  const informational=/^(?:co|czym|kto|kim|jak|jaki|jaka|jakie|dlaczego|czemu|gdzie|kiedy|ile|który|która|które)(?:\s|$)/iu.test(q)||
+    /^(?:opowiedz|wyjaśnij|wytłumacz|opisz|przedstaw|podaj|powiedz mi o)(?:\s|$)/iu.test(q);
+  const personalChat=/\b(lubisz|kochasz|tęsknisz|chcesz mnie|co o mnie myślisz|co o tobie myślę)\b/iu.test(q);
+  const answerWords=String(answer||'').match(/[\p{L}\p{N}]+/gu)||[];
+  if(!informational||social||personalChat||answerWords.length<9)return answer;
   if(/[?？]\s*$/u.test(String(answer||'')))return answer;
-  const endings=[
-    'Czy chcesz dowiedzieć się o tym czegoś więcej?',
-    'Mam nadzieję, że to pomogło. Czy chcesz poznać jeszcze jakiś szczegół?',
-    'Mam nadzieję, że pomogłem. Chcesz dopytać o coś związanego z tym tematem?'
-  ];
   const key=String(modelName)+'|'+q.toLocaleLowerCase('pl');
   const i=followupCounts.get(key)||0;followupCounts.set(key,i+1);
-  return String(answer||'').trim()+' '+endings[i%endings.length];
+  return String(answer||'').trim()+' '+morePrompts[i%morePrompts.length];
+}
+const modelIdentityTurns=new Map();
+function isModelIdentityQuestion(question){
+  const text=String(question||'').toLocaleLowerCase('pl').normalize('NFD')
+    .replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/g,' ').trim();
+  return /\b(jaki|jaka|jakie|ktory|ktora)\s+(jest\s+)?((twoj|twoja)\s+)?(model|wersja)\b/u.test(text)||
+    /\b(z jakiego|jakiego|z ktorego)\s+modelu\b/u.test(text)||
+    /\bjaki masz model\b/u.test(text)||
+    /\bjakim\s+modelem\b/u.test(text)||
+    /\bna jakim modelu\b/u.test(text)||
+    /\bw jakim modelu\b/u.test(text)||
+    /\bco to za model\b/u.test(text)||
+    /\b(jakiego modelu|jakiej wersji)\s+(uzywasz|wybrales|wybralam)\b/u.test(text)||
+    /\b(jak sie nazywa|z czego korzystasz|z jakiego modelu korzystasz)\b/u.test(text)||
+    /\b(twoj|twoja)\s+(model|wersja)\b/u.test(text);
+}
+function modelIdentityReply(modelName){
+  const name=String(modelName||'wybranym modelem').replace(/\.mai$/i,'').trim();
+  const key=name.toLocaleLowerCase('pl');
+  const choices=[
+    `Obecnie korzystasz z modelu ${name}. Model możesz zmienić na dole ekranu.`,
+    `Teraz rozmawiasz z modelem ${name}. Inny wybierzesz na dole ekranu.`,
+    `Wybrany model to ${name}. Zmienisz go przy polu wpisywania wiadomości.`
+  ];
+  const turn=modelIdentityTurns.get(key)||0;modelIdentityTurns.set(key,turn+1);
+  return choices[turn%choices.length];
 }
 
 const nextFrame=()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
-/* Obsługuje wysłanie pytania: wybiera model, szuka odpowiedzi, pokazuje ostrzeżenie i przewija czat. */async /* Obsługuje wysłanie pytania: wybiera model, szuka odpowiedzi, pokazuje ostrzeżenie i przewija czat. */function send(){if(sending)return;const q=$('#input').value.replace(/\s+/gu,' ').trim();if(!q)return;sending=true;$('#send').disabled=true;$('#input').value='';add(q,'user');if(window.MadraStats)window.MadraStats.trackQuestion();else(window.MadraStatsQueue??=[]).push('question');const{content,bubble,copyButton,time}=add('','bot'),progress=showThinking(content);let warning=false;try{await nextFrame();const model=models[Number($('#models').value)];if(!model)throw Error('Nie udało się wczytać wybranego modelu.');const pairs=[...(model.pairs||[]),...(model.memory||[]).map(item=>({...item,rating:item.rating||2,memory:true}))];const result=await MadraAI.prepare(q,pairs,model.knowledge||[],progress,conversation,{expandedKnowledge:usesExpandedReplies(model.name),sterling12:usesSterling12(model.name)});warning=!!result.warning;let reply=warning&&result.index<0&&!(usesSterling12(model.name)&&result.source)?MadraAI.forceReply(q,pairs,model.knowledge||[],conversation,{sterling12:usesSterling12(model.name)}):(result.text||MadraLanguage.composeFallback(q,conversation));if(usesSterling12(model.name)&&result.source)reply=reply.replace(/[—–―]/gu,'-');reply=addNewModelFollowup(reply,q,model.name);if(usesExpandedReplies(model.name))reply=reply.replace(/[—–―]/gu,'-');if(result.index>=0&&result.index<(model.pairs||[]).length)reply=addManualPairEmoji(reply,q,model.name);bubble.textContent=reply;conversation.push({role:'user',text:q},{role:'assistant',text:bubble.textContent});conversation=conversation.slice(-12);if(warning){const n=document.createElement('div');n.className='warn';n.textContent=result.index<0?'Odpowiedź została ułożona z dostępnych skojarzeń i kontekstu; może być mniej trafna.':'Model miał problem z tą wiadomością. Odpowiedź może być niepoprawna.';content.append(n)}progress(100)}catch(e){bubble.textContent=e?.message||'Nie udało się przygotować odpowiedzi.';const n=document.createElement('div');n.className='warn';n.textContent='Model miał problem z tą wiadomością. Odpowiedź może być niepoprawna.';content.append(n);progress(100)}finally{content.querySelector('.thinking')?.remove();time.dateTime=new Date().toISOString();time.textContent=new Intl.DateTimeFormat('pl-PL',{hour:'2-digit',minute:'2-digit'}).format(new Date());if(copyButton)copyButton.hidden=!bubble.textContent.trim();scroll();sending=false;$('#send').disabled=false;$('#input').focus()}}
+/* Obsługuje wysłanie pytania: wybiera model, szuka odpowiedzi, pokazuje ostrzeżenie i przewija czat. */async /* Obsługuje wysłanie pytania: wybiera model, szuka odpowiedzi, pokazuje ostrzeżenie i przewija czat. */function send(){if(sending)return;const q=$('#input').value.replace(/\s+/gu,' ').trim();if(!q)return;sending=true;$('#send').disabled=true;$('#input').value='';add(q,'user');if(window.MadraStats)window.MadraStats.trackQuestion();else(window.MadraStatsQueue??=[]).push('question');const{content,bubble,copyButton,time}=add('','bot'),progress=showThinking(content);let warning=false;try{await nextFrame();const model=models[Number($('#models').value)];if(!model)throw Error('Nie udało się wczytać wybranego modelu.');const pairs=[...(model.pairs||[]),...(model.memory||[]).map(item=>({...item,rating:item.rating||2,memory:true}))];let result,reply=usesSterling12(model.name)?answerMore(q):null,emojiDone=false;if(reply){result={text:reply,warning:false,index:-1};pendingMore&&(pendingMore.model=model.name);}else if(isModelIdentityQuestion(q)){pendingMore=null;reply=modelIdentityReply(model.name);result={text:reply,warning:false,index:-1};}else{result=await MadraAI.prepare(q,pairs,model.knowledge||[],progress,conversation,{expandedKnowledge:usesExpandedReplies(model.name),sterling12:usesSterling12(model.name)});warning=!!result.warning;reply=warning&&result.index<0&&!(usesSterling12(model.name)&&result.source)?MadraAI.forceReply(q,pairs,model.knowledge||[],conversation,{sterling12:usesSterling12(model.name)}):(result.text||MadraLanguage.composeFallback(q,conversation));if(usesSterling12(model.name)&&result.source)reply=varyKnowledgeWording12(reply,model.name);if(usesSterling12(model.name)){reply=addSterling12Emoji(reply,model.name);emojiDone=true;}reply=addNewModelFollowup(reply,q,model.name,result.index<0&&!!result.source);if(usesSterling12(model.name))pendingMore=endsWithMorePrompt(reply)?{remaining:Array.isArray(result.remaining)&&result.remaining.length?result.remaining.slice():[],model:model.name,turn:0}:null;if(usesSterling12(model.name))reply=reply.replace(/^W skrócie:\s*/iu,'');}const resultIndex=Number(result.index);if(usesSterling12(model.name))reply=stopAfterNoMoreDetails(reply);if(usesExpandedReplies(model.name))reply=reply.replace(/[—–―]/gu,'-');if(result.index>=0&&result.index<(model.pairs||[]).length)reply=addManualPairEmoji(reply,q,model.name);if(!emojiDone)reply=addSterling12Emoji(reply,model.name);bubble.textContent=reply;conversation.push({role:'user',text:q},{role:'assistant',text:bubble.textContent});conversation=conversation.slice(-12);if(warning){const n=document.createElement('div');n.className='warn';n.textContent=result.index<0?'Odpowiedź została ułożona z dostępnych skojarzeń i kontekstu; może być mniej trafna.':'Model miał problem z tą wiadomością. Odpowiedź może być niepoprawna.';content.append(n)}progress(100)}catch(e){bubble.textContent=e?.message||'Nie udało się przygotować odpowiedzi.';const n=document.createElement('div');n.className='warn';n.textContent='Model miał problem z tą wiadomością. Odpowiedź może być niepoprawna.';content.append(n);progress(100)}finally{content.querySelector('.thinking')?.remove();time.dateTime=new Date().toISOString();time.textContent=new Intl.DateTimeFormat('pl-PL',{hour:'2-digit',minute:'2-digit'}).format(new Date());if(copyButton)copyButton.hidden=!bubble.textContent.trim();scroll();sending=false;$('#send').disabled=false;$('#input').focus()}}
 function bindModal(id,button){const modal=$('#'+id);button.onclick=()=>{modal.classList.add('show');modal.setAttribute('aria-hidden','false')};modal.addEventListener('click',e=>{if(e.target===modal||e.target.closest('[data-close]')){modal.classList.remove('show');modal.setAttribute('aria-hidden','true')}})}bindModal('aboutModal', $('#aboutHelp'));bindModal('allPostsModal', $('#showAllPosts'));bindModal('themesModal', $('#openThemes'));$('#navSettings').addEventListener('click',showSettings);/* Ustawia wygląd strony i zapamiętuje wybrany motyw w localStorage tej przeglądarki. */function applyTheme(theme,persist=true){const value=['light','dongus','nocturne'].includes(theme)?theme:'dark';document.body.classList.toggle('themeLight',value==='light');document.body.classList.toggle('themeDongus',value==='dongus');document.body.classList.toggle('themeNocturne',value==='nocturne');const names={dark:'Ciemny',light:'Jasny',dongus:'Dongus',nocturne:'Nowy'};const label=$('#themeOpenLabel');if(label)label.textContent=names[value];const swatch=$('#themeOpenSwatch');if(swatch)swatch.className='themeSwatch '+(value==='dongus'?'dongusSwatch':value==='light'?'lightSwatch':value==='nocturne'?'nocturneSwatch':'darkSwatch');document.querySelectorAll('[data-theme-choice]').forEach(button=>{const selected=button.dataset.themeChoice===value;button.classList.toggle('selected',selected);button.setAttribute('aria-pressed',selected?'true':'false')});if(persist){try{localStorage.setItem('madraAI-theme',value)}catch{}}}let savedTheme='dark';try{savedTheme=localStorage.getItem('madraAI-theme')||'dark'}catch{}applyTheme(savedTheme,false);$('#themesModal').addEventListener('click',e=>{const choice=e.target.closest('[data-theme-choice]');if(choice){applyTheme(choice.dataset.themeChoice);$('#themesModal').classList.remove('show');$('#themesModal').setAttribute('aria-hidden','true')}});document.addEventListener('keydown',e=>{if(e.key==='Escape')document.querySelectorAll('.modal.show').forEach(m=>{m.classList.remove('show');m.setAttribute('aria-hidden','true')})});$('#send').onclick=send;$('#input').onkeydown=e=>{if(e.key==='Enter'&&!e.shiftKey&&!e.isComposing&&!e.repeat){e.preventDefault();send()}};$('#input').addEventListener('input',()=>{const ta=$('#input');if(ta.value.includes('\n')){ta.value=ta.value.replace(/\n/g,'');send()}});load();/* Oznacza aktualną zakładkę jako aktywną w bocznym menu. */function syncNavigation(page){const home=$('#navHome'),chat=$('#navChat'),ann=$('#navAnnouncements'),settings=$('#navSettings');home.classList.toggle('active',page==='home');chat.classList.toggle('active',page==='chat');ann.classList.toggle('active',page==='announcements');settings.classList.toggle('active',page==='settings');home.setAttribute('aria-current',page==='home'?'page':'false');chat.setAttribute('aria-current',page==='chat'?'page':'false');ann.setAttribute('aria-current',page==='announcements'?'page':'false');settings.setAttribute('aria-current',page==='settings'?'page':'false')}
 /* Przełącza widok na stronę główną. */function showHome(){document.body.classList.add('home');document.body.classList.remove('chatMode','settingsMode','announcementsMode');syncNavigation('home')}
 /* Przełącza widok na rozmowę. */function showChat(){document.body.classList.remove('home','settingsMode','announcementsMode');document.body.classList.add('chatMode');syncNavigation('chat')}
@@ -485,4 +613,4 @@ const OFFICIAL_PARTNERS=['PopSlopTV','Obsługa Ludności','Moi Kakauchiye Marvin
 /* Tworzy kafelki partnerów z ich logotypami i nazwami. */function renderPartners(){const list=$('#partnersList');list.replaceChildren();for(const name of OFFICIAL_PARTNERS){const card=document.createElement('div');card.className='partner';const img=document.createElement('img');img.alt='';img.setAttribute('aria-hidden','true');loadPartnerLogo(img,name);const label=document.createElement('span');label.className='partnerName';label.textContent=name;card.append(img,label);list.append(card)}}renderPartners();
 
 const discordImg=$('#discordIcon');const discordExts=['png','PNG','webp','WEBP','jpg','JPG'];let discordExtIndex=0;discordImg.onerror=()=>{if(discordExtIndex>=discordExts.length){discordImg.hidden=true;return}discordImg.src='Vectors/Discord%20Logo.'+discordExts[discordExtIndex++]};if(discordImg.complete&&!discordImg.naturalWidth)discordImg.src='Vectors/Discord%20Logo.png';
-</script><script src="stats.js" defer></script></body></html>
+</script><script src="notice.js"></script><script src="stats.js" defer></script></body></html>
