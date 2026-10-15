@@ -1,13 +1,17 @@
 {
   "posts": [
     {
-      "title": "Sterling 1.1 już wyszedł! - 14.10.2026",
-      "text": "Nowy model MądraAI z jeszcze większą wiedzą o świecie oraz nowymi informacjami dostępny już teraz!",
+      "title": "Ostatnia wersja Sterlinga oficjalnie wyszła - Sterling 1.2 - 15.10.2026",
+      "text": "Jeszcze większa wiedza, jeszcze lepsze odpowiedzi. Z naprawionymi błędami z Sterlinga 1.1 oraz z lepszym układaniem zdań i myśleniem."
       "important": true
     },
     {
       "title": "Oficjalny serwer na Discordzie już niedługo - 14.10.2026",
       "text": "MądraAI już niedługo będzie miała swój własny serwer na Discordzie! Będą tam publikowane najnowsze informacje i aktualizacje na temat MądraAI."
+    },
+    {
+      "title": "Sterling 1.1 już wyszedł! - 14.10.2026",
+      "text": "Nowy model MądraAI z jeszcze większą wiedzą o świecie oraz nowymi informacjami dostępny już teraz!",
     },
     {
       "title": "Nowy wygląd strony - 14.10.2026",
