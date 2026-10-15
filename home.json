@@ -1,25 +1,30 @@
 {
   "posts": [
     {
-      "title": "Ostatnia wersja Sterlinga oficjalnie wyszła - Sterling 1.2 - 15.10.2026",
-      "text": "Jeszcze większa wiedza, jeszcze lepsze odpowiedzi. Z naprawionymi błędami z Sterlinga 1.1 oraz z lepszym układaniem zdań i myśleniem."
+      "title": "Ostatnia wersja Sterlinga oficjalnie wyszła - Sterling 1.2",
+      "text": "Jeszcze większa wiedza, jeszcze lepsze odpowiedzi. Z naprawionymi błędami z Sterlinga 1.1 oraz z lepszym układaniem zdań i myśleniem.",
+      "date": "15 października 2026",
       "important": true
     },
     {
-      "title": "Oficjalny serwer na Discordzie już niedługo - 14.10.2026",
-      "text": "MądraAI już niedługo będzie miała swój własny serwer na Discordzie! Będą tam publikowane najnowsze informacje i aktualizacje na temat MądraAI."
+      "title": "Oficjalny serwer na Discordzie już niedługo",
+      "text": "MądraAI już niedługo będzie miała swój własny serwer na Discordzie! Będą tam publikowane najnowsze informacje i aktualizacje na temat MądraAI.",
+      "date": "14 października 2026"
     },
     {
-      "title": "Sterling 1.1 już wyszedł! - 14.10.2026",
+      "title": "Sterling 1.1 już wyszedł!",
       "text": "Nowy model MądraAI z jeszcze większą wiedzą o świecie oraz nowymi informacjami dostępny już teraz!",
+      "date": "14 października 2026"
     },
     {
-      "title": "Nowy wygląd strony - 14.10.2026",
-      "text": "Strona wygląda teraz lepiej. Home page, nowa czcionka, poprawiony wygląd strony i inne mniejsze poprawki, które mają duże znaczenie!"
+      "title": "Nowy wygląd strony",
+      "text": "Strona wygląda teraz lepiej. Home page, nowa czcionka, poprawiony wygląd strony i inne mniejsze poprawki, które mają duże znaczenie!",
+      "date": "14 października 2026"
     },
     {
-      "title": "Witaj w MądraAI - 14.10.2026",
-      "text": "To prosta sztuczna inteligencja rozwijana na podstawie tekstów oraz przykładów pytań i odpowiedzi. Wybierz model i rozpocznij rozmowę."
+      "title": "Witaj w MądraAI",
+      "text": "To prosta sztuczna inteligencja rozwijana na podstawie tekstów oraz przykładów pytań i odpowiedzi. Wybierz model i rozpocznij rozmowę.",
+      "date": "14 października 2026"
     }
   ]
 }
