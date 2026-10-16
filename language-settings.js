@@ -152,14 +152,12 @@
     announcementCache.set(post,pending);return pending;
   }
   function decorateAnnouncementCard(post,card,title,date,content){
+    card.querySelector('.announcementTranslationNote')?.remove();
     if(locale!=='en')return;
-    let note=card.querySelector('.announcementTranslationNote');
-    if(!note){note=document.createElement('span');note.className='announcementTranslationNote';content.append(note)}
-    const setNote=ok=>{note.textContent=ok?uiText('Automatycznie przetłumaczono z polskiego'):uiText('Nie udało się przetłumaczyć ogłoszenia. Wyświetlam polski oryginał.')};
     const cached=announcementCache.get(post);
-    if(cached){cached.then(result=>{if(!card.isConnected||locale!=='en')return;title.textContent=result.title;if(date&&result.date)date.textContent=result.date;setNote(result.ok)});return}
-    title.textContent=uiText('Tłumaczenie w toku…');if(date&&post.date)date.textContent=post.date;note.textContent=uiText('Tłumaczenie w toku…');
-    translateAnnouncement(post).then(result=>{if(!card.isConnected||locale!=='en')return;title.textContent=result.title;if(date&&result.date)date.textContent=result.date;setNote(result.ok)});
+    if(cached){cached.then(result=>{if(!card.isConnected||locale!=='en')return;title.textContent=result.title;if(date&&result.date)date.textContent=result.date});return}
+    title.textContent=uiText('Tłumaczenie w toku…');if(date&&post.date)date.textContent=post.date;
+    translateAnnouncement(post).then(result=>{if(!card.isConnected||locale!=='en')return;title.textContent=result.title;if(date&&result.date)date.textContent=result.date});
   }
   function translateAnnouncementDetail(post,article,title,text,date){
     activeAnnouncement=post;if(locale!=='en')return;
