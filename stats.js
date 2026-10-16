@@ -7,8 +7,13 @@
   const COUNTER_NAMESPACE = 'madraai-official-sterling';
   const REQUEST_TIMEOUT_MS = 8000;
   const countNode = document.getElementById('questionsToday');
+  const loadingNode = document.getElementById('questionsLoading');
   const latestNode = document.getElementById('latestModel');
   let refreshInFlight = null;
+
+  function setLoading(isLoading) {
+    if (loadingNode) loadingNode.hidden = !isLoading;
+  }
 
   function todayInWarsaw() {
     const parts = new Intl.DateTimeFormat('en-CA', {
@@ -65,6 +70,7 @@
     countNode.textContent = new Intl.NumberFormat('pl-PL').format(count);
     countNode.classList.toggle('statsUnavailable', stale);
     countNode.title = stale ? 'Pokazuję ostatni zapisany odczyt. Licznik odświeży się po przywróceniu połączenia.' : '';
+    setLoading(false);
   }
 
   function showLastKnown() {
@@ -74,6 +80,7 @@
         countNode.textContent = 'Licznik chwilowo niedostępny';
         countNode.classList.add('statsUnavailable');
         countNode.title = 'Nie udało się jeszcze pobrać wartości licznika.';
+        setLoading(false);
       }
       return;
     }
@@ -104,11 +111,12 @@
     if (!countNode) return;
     if (refreshInFlight) return refreshInFlight;
     refreshInFlight = (async () => {
+      setLoading(true);
       try {
         const response = await requestJson(counterUrl('get'));
         if (response.status === 404) {
-          remember(0);
-          showCount(0);
+          // 404 sygnalizuje błąd konfiguracji API, nie rzeczywisty wynik równy zero.
+          showLastKnown();
           return;
         }
         if (!response.ok) throw new Error(`Odczyt licznika: HTTP ${response.status}`);
@@ -125,6 +133,7 @@
   }
 
   async function trackQuestion() {
+    setLoading(true);
     try {
       const response = await requestJson(counterUrl('hit'));
       if (!response.ok) throw new Error(`Aktualizacja licznika: HTTP ${response.status}`);
@@ -143,6 +152,8 @@
   window.MadraStatsQueue = [];
   queuedQuestions.forEach(() => trackQuestion());
 
+  // Od razu pokaż ostatni odczyt; chwilowy błąd sieci nie ukryje licznika.
+  showLastKnown();
   refresh();
   window.setInterval(refresh, 120_000);
   window.addEventListener('online', refresh);
@@ -150,3 +161,5 @@
     if (document.visibilityState === 'visible') refresh();
   });
 })();
+
+
