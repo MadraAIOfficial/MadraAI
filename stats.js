@@ -7,15 +7,9 @@
   const COUNTER_NAMESPACE = 'madraai-official-sterling';
   const REQUEST_TIMEOUT_MS = 8000;
   const countNode = document.getElementById('questionsToday');
-  const loadingNode = document.getElementById('questionsLoading');
   const latestNode = document.getElementById('latestModel');
   let refreshInFlight = null;
-
-  function setLoading(isLoading) {
-    if (loadingNode) loadingNode.hidden = !isLoading;
-  }
-
-  function todayInWarsaw() {
+function todayInWarsaw() {
     const parts = new Intl.DateTimeFormat('en-CA', {
       timeZone: 'Europe/Warsaw', year: 'numeric', month: '2-digit', day: '2-digit'
     }).formatToParts(new Date());
@@ -70,17 +64,15 @@
     countNode.textContent = new Intl.NumberFormat('pl-PL').format(count);
     countNode.classList.toggle('statsUnavailable', stale);
     countNode.title = stale ? 'Pokazuję ostatni zapisany odczyt. Licznik odświeży się po przywróceniu połączenia.' : '';
-    setLoading(false);
   }
 
   function showLastKnown() {
     const value = cachedValue();
     if (value === null) {
       if (countNode) {
-        countNode.textContent = 'Licznik chwilowo niedostępny';
+        countNode.textContent = '0';
         countNode.classList.add('statsUnavailable');
-        countNode.title = 'Nie udało się jeszcze pobrać wartości licznika.';
-        setLoading(false);
+        countNode.title = 'Pokazuję 0 do czasu pobrania aktualnej statystyki.';
       }
       return;
     }
@@ -111,7 +103,6 @@
     if (!countNode) return;
     if (refreshInFlight) return refreshInFlight;
     refreshInFlight = (async () => {
-      setLoading(cachedValue() === null);
       try {
         const response = await requestJson(counterUrl('get'));
         if (response.status === 404) {
@@ -133,7 +124,6 @@
   }
 
   async function trackQuestion() {
-    setLoading(cachedValue() === null);
     try {
       const response = await requestJson(counterUrl('hit'));
       if (!response.ok) throw new Error(`Aktualizacja licznika: HTTP ${response.status}`);
@@ -161,6 +151,8 @@
     if (document.visibilityState === 'visible') refresh();
   });
 })();
+
+
 
 
 
