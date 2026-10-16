@@ -111,7 +111,7 @@
     if (!countNode) return;
     if (refreshInFlight) return refreshInFlight;
     refreshInFlight = (async () => {
-      setLoading(true);
+      setLoading(cachedValue() === null);
       try {
         const response = await requestJson(counterUrl('get'));
         if (response.status === 404) {
@@ -133,7 +133,7 @@
   }
 
   async function trackQuestion() {
-    setLoading(true);
+    setLoading(cachedValue() === null);
     try {
       const response = await requestJson(counterUrl('hit'));
       if (!response.ok) throw new Error(`Aktualizacja licznika: HTTP ${response.status}`);
@@ -161,5 +161,6 @@
     if (document.visibilityState === 'visible') refresh();
   });
 })();
+
 
 
