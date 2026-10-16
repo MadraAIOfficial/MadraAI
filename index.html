@@ -573,7 +573,7 @@ window.MadraAI = (() => {
 
   function calculateMath(question) {
     let input = String(question || '').toLocaleLowerCase('pl').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/ł/g, 'l').replace(/(\d),(?=\d)/gu, '$1.');
-    input = input.replace(/[×·]/gu, ' * ').replace(/[÷]/gu, ' / ').replace(/[−–—]/gu, ' - ').replace(/\bx\b/gu, ' * ');
+    input = input.replace(/[×·]/gu, ' * ').replace(/[÷]/gu, ' / ').replace(/[−–—]/gu, ' - ').replace(/(\d|\))\s*:\s*(?=(\d|\())/gu, '$1 / ').replace(/\bx\b/gu, ' * ');
     input = input.replace(/^\s*(?:(?:ile\s+(?:to|wynosi)|policz(?:\s+mi)?|oblicz(?:\s+mi)?|podaj\s+wynik(?:\s+dzialania)?)\s*)+/u, ' ');
     input = input.replace(/\b(mnozone\s+przez|pomnozyc\s+przez|razy|mnozyc)\b/gu, ' * ').replace(/\b(podzielic\s+przez|podzielone\s+przez|dzielone\s+przez|dzielic\s+przez)\b/gu, ' / ').replace(/\b(dodac|plus)\b/gu, ' + ').replace(/\b(odjac|minus)\b/gu, ' - ').replace(/\b(modulo|mod)\b/gu, ' % ');
     const numbers = {zero:0,jeden:1,jedna:1,jedno:1,jednego:1,dwa:2,dwie:2,dwoch:2,trzy:3,trzech:3,cztery:4,czterech:4,piec:5,pieciu:5,szesc:6,szesciu:6,siedem:7,siedmiu:7,osiem:8,osmiu:8,dziewiec:9,dziewieciu:9,dziesiec:10,jedenascie:11,dwanascie:12,trzynascie:13,czternascie:14,pietnascie:15,szesnascie:16,siedemnascie:17,osiemnascie:18,dziewietnascie:19,dwadziescia:20,trzydziesci:30,czterdziesci:40,piecdziesiat:50,szescdziesiat:60,siedemdziesiat:70,osiemdziesiat:80,dziewiecdziesiat:90,sto:100};
@@ -744,7 +744,16 @@ function chooseFamilyVariant(items,query){const base=items[0];const family=infer
     report(0);
     await yieldToBrowser();
     const mathAnswer = options.familyDiversity ? calculateMath(q) : null;
-    if (mathAnswer) { report(100); return { text: mathAnswer, warning: false, generate: false, index: -1, toolUsed: 'math' }; }
+    if (mathAnswer) {
+      const complexity = (String(q).match(/[+\-*\/×÷:()%√^]|\b(?:plus|minus|razy|podziel|pomnoz|dodaj|odejmij)\b/giu) || []).length;
+      const thinkingMs = Math.min(1250, 550 + complexity * 110);
+      report(18); await yieldToBrowser();
+      report(42); await new Promise(resolve => setTimeout(resolve, Math.round(thinkingMs * .45)));
+      report(72); await yieldToBrowser();
+      await new Promise(resolve => setTimeout(resolve, thinkingMs - Math.round(thinkingMs * .45)));
+      report(100);
+      return { text: mathAnswer, warning: false, generate: false, index: -1, toolUsed: 'math' };
+    }
     const ranked = rank(q, pairs, !!options.familyDiversity).filter(item => typeof item.p?.a === 'string' && item.p.a.trim());
     report(35);
     const best = ranked[0];
