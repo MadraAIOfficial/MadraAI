@@ -1194,48 +1194,18 @@ function chooseFamilyVariant(items,query){const base=items[0];const family=infer
 
 /* Dodawaj tu nazwy plików .mai z folderu Models; GitHub Pages nie udostępnia listowania katalogu. */const PUBLISHED_MODELS=['Orzech 2.1.mai','Orzech 2.0.mai','Sterling 1.0.mai','Sterling 1.1.mai','Sterling 1.2.mai'];window.MADRAAI_PUBLISHED_MODELS=PUBLISHED_MODELS;const MODEL_RELEASES={'Orzech 2.1.mai':'17 października 2026','Orzech 2.0.mai':'16 października 2026','Sterling 1.0.mai':'14 października 2026','Sterling 1.1.mai':'14 października 2026','Sterling 1.2.mai':'15 października 2026'};let models=[],sending=false,conversation=[];const $=s=>document.querySelector(s),qsa=s=>document.querySelectorAll(s);
 
-/* Stan rozmowy: Orzech 2.x zapamiętuje rozmowę w localStorage tej przeglądarki, pozostałe modele tylko do odświeżenia strony. */
-const conversationMemoryPrefix='madraai-orzech-conversation-v1:';
-const pendingMoreMemoryPrefix='madraai-orzech-followup-v1:';
+/* Rozmowy żyją tylko do zamknięcia lub odświeżenia strony. */
 const volatileConversations=new Map();
 let activeConversationModel='';
 const welcomeTemplate=document.querySelector('.welcome')?.cloneNode(true)||null;
-function conversationStorageKey(modelName,prefix=conversationMemoryPrefix){return prefix+String(modelName||'').trim().toLocaleLowerCase('pl')}
-function readOrzechMemory(modelName){
-  try{
-    const stored=JSON.parse(localStorage.getItem(conversationStorageKey(modelName))||'null');
-    if(!stored||stored.version!==1||!Array.isArray(stored.turns))return[];
-    return stored.turns.filter(item=>(item?.role==='user'||item?.role==='assistant')&&typeof item.text==='string'&&item.text.trim()).slice(-40);
-  }catch{return[]}
-}
-function saveOrzechMemory(modelName,turns=conversation){
-  if(!usesFamilyDiversity(modelName))return;
-  try{
-    const compact=turns.slice(-40).map(item=>({role:item.role,text:String(item.text||'').slice(0,4000),displayText:String(item.displayText||item.text||'').slice(0,4000),question:String(item.question||'').slice(0,1000),warning:!!item.warning,toolUsed:String(item.toolUsed||''),at:Number(item.at)||0}));
-    localStorage.setItem(conversationStorageKey(modelName),JSON.stringify({version:1,updatedAt:Date.now(),turns:compact}));
-  }catch{}
-}
-function restorePendingMore(modelName){
-  try{
-    const saved=JSON.parse(localStorage.getItem(conversationStorageKey(modelName,pendingMoreMemoryPrefix))||'null');
-    return saved&&saved.model===modelName&&Date.now()-Number(saved.updatedAt||0)<7*24*60*60*1000?saved.value:null;
-  }catch{return null}
-}
-function savePendingMore(modelName){
-  if(!usesFamilyDiversity(modelName))return;
-  try{
-    const key=conversationStorageKey(modelName,pendingMoreMemoryPrefix);
-    if(pendingMore?.model===modelName)localStorage.setItem(key,JSON.stringify({model:modelName,updatedAt:Date.now(),value:pendingMore}));
-    else localStorage.removeItem(key);
-  }catch{}
-}
+try{for(let i=localStorage.length-1;i>=0;i--){const key=localStorage.key(i);if(key?.startsWith('madraai-orzech-conversation-v1:')||key?.startsWith('madraai-orzech-followup-v1:'))localStorage.removeItem(key)}}catch{}
 /* Po zmianie modelu wczytuje jego własną rozmowę i odtwarza ją w oknie czatu. */
 function switchConversationToSelectedModel(){
   const model=models[+$('#models').value];
   if(activeConversationModel)volatileConversations.set(activeConversationModel,conversation);
   activeConversationModel=model?.name||'';
-  conversation=model?(usesFamilyDiversity(model.name)?readOrzechMemory(model.name):(volatileConversations.get(model.name)||[])):[];
-  pendingMore=model&&usesFamilyDiversity(model.name)?restorePendingMore(model.name):null;
+  conversation=model?(volatileConversations.get(model.name)||[]):[];
+  pendingMore=null;
   const chat=$('#chat');
   chat.replaceChildren();
   if(!conversation.length){if(welcomeTemplate)chat.append(welcomeTemplate.cloneNode(true));return}
@@ -1552,10 +1522,10 @@ async function send(){
     const language=window.MadraAISettings?.locale||'pl';
     const englishInput=language==='en';
     conversationForReply=conversation.slice();
-    // Orzech 2.x od razu zapisuje pytanie, by rozmowa przetrwała odświeżenie strony.
+    // Zachowaj pytanie w kontekście bieżącej rozmowy.
     if(usesFamilyDiversity(model.name)){
       conversation.push({role:'user',text:q,displayText:q,at:Date.now()});
-      conversation=conversation.slice(-40);orzechUserSaved=true;saveOrzechMemory(model.name);
+      conversation=conversation.slice(-40);orzechUserSaved=true;
     }
     const englishGreeting=englishInput&&isOrzechModel(model.name)&&/^(?:hello|hi|hey|hi there|hey there|hello there)[!?.,]*$/iu.test(q);
     if(englishGreeting)queryForModel='hej';
@@ -1567,7 +1537,7 @@ async function send(){
       const trainedMatch=MadraAI.rank(queryForModel,pairs,true)[0];
       if(trainedMatch&&trainedMatch.s>=.8&&trainedMatch.coverage>=.75&&typeof trainedMatch.p?.q==='string')queryForModel=trainedMatch.p.q;
     }
-    if(orzechUserSaved){conversation[conversation.length-1].text=queryForModel;saveOrzechMemory(model.name)}
+    if(orzechUserSaved)conversation[conversation.length-1].text=queryForModel
     let reply=isOrzechModel(model.name)||usesSterling12(model.name)?answerMore(queryForModel,model.name):null,emojiDone=false;
     if(reply){result={text:reply,warning:false,index:-1};if(pendingMore)pendingMore.model=model.name;}
     else if(isModelIdentityQuestion(queryForModel)){
@@ -1587,7 +1557,7 @@ async function send(){
       if(usesSterling12(model.name))reply=reply.replace(/^W skrócie:\s*/iu,'');
     }
     if(usesSterling12(model.name))reply=stopAfterNoMoreDetails(reply);
-    savePendingMore(model.name);
+    
     if(usesExpandedReplies(model.name))reply=reply.replace(/[—–―]/gu,'-');
     if(result.index>=0&&result.index<(model.pairs||[]).length)reply=addManualPairEmoji(reply,queryForModel,model.name);
     if(!emojiDone)reply=addSterling12Emoji(reply,model.name);
@@ -1602,7 +1572,7 @@ async function send(){
     bubble.textContent=reply;
     const assistantTurn={role:'assistant',text:polishReply,displayText:reply,question:q,warning:!!warning,toolUsed:result?.toolUsed||'',at:Date.now()};
     if(usesFamilyDiversity(model.name)){
-      conversation.push(assistantTurn);conversation=conversation.slice(-40);saveOrzechMemory(model.name);
+      conversation.push(assistantTurn);conversation=conversation.slice(-40);
     }else{
       conversation.push({role:'user',text:queryForModel,displayText:q,at:assistantTurn.at},assistantTurn);
       conversation=conversation.slice(-12);volatileConversations.set(model.name,conversation);
@@ -1615,7 +1585,7 @@ async function send(){
     if(model&&usesFamilyDiversity(model.name)){
       if(!orzechUserSaved)conversation.push({role:'user',text:queryForModel,displayText:q,at:Date.now()});
       conversation.push({role:'assistant',text:message,displayText:message,question:q,warning:true,at:Date.now()});
-      conversation=conversation.slice(-40);saveOrzechMemory(model.name);
+      conversation=conversation.slice(-40);
     }
   }finally{
     content.querySelector('.thinking')?.remove();time.dateTime=new Date().toISOString();time.textContent=new Intl.DateTimeFormat(window.MadraAISettings?.locale==='en'?'en-US':'pl-PL',{hour:'2-digit',minute:'2-digit'}).format(new Date());
@@ -1685,7 +1655,7 @@ const OFFICIAL_PARTNERS=['PopSlopTV','Obsługa Ludności','Moi Kakauchiye Marvin
 /* Tworzy kafelki partnerów z ich logotypami i nazwami. */function renderPartners(){const list=$('#partnersList');list.replaceChildren();for(const name of OFFICIAL_PARTNERS){const card=document.createElement('div');card.className='partner';const img=document.createElement('img');img.alt='';img.setAttribute('aria-hidden','true');loadPartnerLogo(img,name);const label=document.createElement('span');label.className='partnerName';label.textContent=name;card.append(img,label);list.append(card)}}renderPartners();
 
 const discordImg=$('#discordIcon');const discordExts=['png','PNG','webp','WEBP','jpg','JPG'];let discordExtIndex=0;discordImg.onerror=()=>{if(discordExtIndex>=discordExts.length){discordImg.hidden=true;return}discordImg.src='Vectors/Discord%20Logo.'+discordExts[discordExtIndex++]};if(discordImg.complete&&!discordImg.naturalWidth)discordImg.src='Vectors/Discord%20Logo.png';
-</script><script src="language-settings.js"></script><script src="notice.js"></script><script src="stats.js" defer></script><script src="FnF/fnf-game.js?v=20261017-8"></script><script>
+</script><script src="language-settings.js"></script><script src="notice.js"></script><script src="stats.js" defer></script><script src="FnF/fnf-game.js?v=20261017-9"></script><script>
 (() => {
   const palette = ['#f0203d', '#f47700', '#e3b500', '#138b45', '#1265dc', '#783acb', '#d32986'];
   const THEME_KEY = 'madraAI-theme';
