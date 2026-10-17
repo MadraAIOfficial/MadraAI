@@ -1,0 +1,37 @@
+.chat.fnfChatActive{position:relative;display:block;overflow:hidden;padding:10px clamp(10px,2vw,24px)}
+.fnfChatActive>.fnfChatLeaving{position:relative;z-index:1;animation-duration:.46s;animation-timing-function:cubic-bezier(.6,0,.9,.4);animation-fill-mode:forwards}
+.fnfChatActive>.fnfLeaveRight{animation-name:fnfChatSlideRight}
+.fnfChatActive>.fnfLeaveLeft{animation-name:fnfChatSlideLeft}
+.fnfChatActive>.fnfChatLeaving[hidden]{display:none}
+.fnfChatActive>.fnfChatReturning{position:relative;z-index:1;animation-duration:.46s;animation-timing-function:cubic-bezier(.16,.75,.25,1);animation-fill-mode:both}
+.fnfChatActive>.fnfReturnRight{animation-name:fnfChatEnterRight}
+.fnfChatActive>.fnfReturnLeft{animation-name:fnfChatEnterLeft}
+@keyframes fnfChatSlideRight{to{opacity:0;transform:translateX(110vw)}}
+@keyframes fnfChatSlideLeft{to{opacity:0;transform:translateX(-110vw)}}
+@keyframes fnfChatEnterRight{from{opacity:0;transform:translateX(110vw)}to{opacity:1;transform:translateX(0)}}
+@keyframes fnfChatEnterLeft{from{opacity:0;transform:translateX(-110vw)}to{opacity:1;transform:translateX(0)}}
+.app.fnfGamePlaying .compose{animation:fnfComposeDown .46s cubic-bezier(.6,0,.9,.4) both}
+.app.fnfGameReturning .compose{animation:fnfComposeUp .46s cubic-bezier(.16,.75,.25,1) both}
+@keyframes fnfComposeDown{to{opacity:0;transform:translateY(120%)}}
+@keyframes fnfComposeUp{from{opacity:0;transform:translateY(120%)}to{opacity:1;transform:translateY(0)}}
+
+.fnfGameInline{position:absolute;inset:0;z-index:2;min-height:0;color:#f7f7fb;font-family:Rubik,system-ui,sans-serif;visibility:hidden}
+.fnfGameInline.fnfGameReady{visibility:visible;animation:fnfGameEnter .46s cubic-bezier(.16,.75,.25,1) both}
+@keyframes fnfGameEnter{from{opacity:0;transform:translateY(-60vh)}to{opacity:1;transform:translateY(0)}}
+
+.fnfGameInline.fnfGameEnding .fnfCanvas{animation:fnfArrowExitUp .6s ease-in both}
+.fnfGameInline.fnfGameEnding .fnfOpponent{animation:fnfOpponentExit .6s ease-in forwards}
+@keyframes fnfArrowExitUp{to{opacity:0;transform:translateY(-100vh)}}
+
+.fnfPanel,.fnfStage{position:absolute;inset:0;width:100%;height:100%;min-height:0;overflow:hidden;background:transparent}
+.fnfCanvas{position:absolute;inset:0;display:block;pointer-events:none}
+.fnfStage{transform-origin:center;will-change:transform}
+.fnfOpponent{position:absolute;z-index:2;left:clamp(10px,calc(26% - 220px),22vw);bottom:3vh;width:clamp(180px,25vw,320px);height:clamp(220px,40vh,380px);object-fit:contain;object-position:center bottom;opacity:0;pointer-events:none;filter:drop-shadow(0 8px 14px #0008)}
+.fnfOpponent.fnfOpponentEntering{animation:fnfOpponentEnter .62s cubic-bezier(.16,.75,.25,1) both}
+@keyframes fnfOpponentEnter{from{opacity:0;transform:translateY(115%)}to{opacity:1;transform:translateY(0)}}
+@keyframes fnfOpponentExit{to{opacity:0;transform:translateY(120%)}}
+.fnfRatingClone{position:absolute;z-index:3;top:clamp(106px,16.5vh,152px);left:calc(50% - 390px);width:min(30vw,180px);max-height:82px;object-fit:contain;pointer-events:none;filter:drop-shadow(0 2px 3px #0009);animation:fnfRatingFall .9s cubic-bezier(.2,.65,.35,1) forwards}
+@keyframes fnfRatingFall{0%{opacity:1;transform:translateY(0) scale(.86)}15%{opacity:1;transform:translateY(0) scale(1)}100%{opacity:0;transform:translateY(82px) scale(.94)}}
+@media(prefers-reduced-motion:reduce){.fnfChatActive>.fnfChatLeaving,.fnfChatActive>.fnfChatReturning,.fnfGameInline.fnfGameEnding .fnfCanvas,.fnfGameInline.fnfGameEnding .fnfOpponent{animation-duration:.01ms}}
+@media(max-width:560px){.fnfRatingClone{top:clamp(86px,15vh,116px);left:4px;width:min(24vw,88px);max-height:54px}.fnfOpponent{left:4px;bottom:2vh;width:clamp(88px,31vw,140px);height:clamp(120px,28vh,210px)}}
+body.jebInverted{transform:rotate(180deg);transform-origin:center center}
