@@ -441,7 +441,8 @@ window.MadraAI = (() => {
     'to tu ty u w we więc z za ze że żeby wy was wasz właśnie wiem wiesz ' +
     'wszystko sobie czytać napisz powiedz opisz wyjaśnij oznacza znaczy ' +
     'odpowiedz odpowiedź pytanie pytam czym kim czym czyż'
-  ).split(/\s+/));
+  ).split(/\s+/).map(word => word.toLocaleLowerCase('pl').normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '').replace(/ł/g, 'l')));
 
   const normalize = value => String(value ?? '').toLocaleLowerCase('pl')
     .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
@@ -452,11 +453,11 @@ window.MadraAI = (() => {
     if (w.length <= 4) return w;
     return w.replace(/(owego|owej|owych|owymi|ami|ach|owie|ego|emu|owej|owa|owe|ych|ymi|asz|enie|anie|ami|om|em|ie|y|a|u|ę|ą|i)$/u, '');
   };
-  const greetingWords = new Set(['czesc', 'hej', 'hejka', 'siema', 'elo', 'witaj']);
+  const greetingWords = new Set(['czesc', 'hej', 'hejka', 'siema', 'elo', 'witaj', 'hello', 'hi', 'hey']);
   const tokens = value => unique(rawWords(value).filter(word => word.length > 1 && !STOP.has(word))
     .map(word => greetingWords.has(word) ? 'intent-powitanie' : stem(word)).filter(Boolean));
   // W Sterlingu 1.2 dodatkowo sprowadzamy część typowych polskich końcówek
-  // do wspólnej postaci, żeby „rzucanie" i „rzucaniem" trafiały do tego samego faktu.
+  // do wspólnej postaci, żeby „rzucanie” i „rzucaniem” trafiały do tego samego faktu.
   const tokensFor12 = value => unique(rawWords(value).filter(word => word.length > 1 && !STOP.has(word))
     .map(word => {
       if (greetingWords.has(word)) return 'intent-powitanie';
@@ -484,6 +485,7 @@ window.MadraAI = (() => {
     const firstWord = text.match(/^\p{L}+/u)?.[0] || '';
     const acronym = firstWord.length > 1 && firstWord === firstWord.toLocaleUpperCase('pl');
     const lower = acronym ? text : text[0].toLocaleLowerCase('pl') + text.slice(1);
+    // Co czwarta odpowiedź bez nagłówka — żeby nie powtarzały się za często.
     const variants = [
       text,
       'Krótko mówiąc, ' + lower,
@@ -493,6 +495,8 @@ window.MadraAI = (() => {
     return variants[turn % variants.length].replace(/\s+/g, ' ').trim() || text;
   }
 
+  // Ogólny wariator Orzecha. Zmienia konstrukcję zdania i neutralne łączniki,
+  // zamiast dopisywać gotowe odpowiedzi dla konkretnych tematów.
   function varyOrzechReply(value) {
     let result = String(value || '').trim();
     if (!result || Math.random() < .2) return result;
@@ -535,9 +539,9 @@ window.MadraAI = (() => {
     return result.replace(/\s+([,.!?])/gu, '$1').trim();
   }
 
-  function conversationalReply(q, conversation = []) {
+  function conversationalReply(q, conversation = [], orzechMode = false) {
     const text = normalize(q);
-    const key = 'fallback:' + (tokens(q).slice(0, 3).join('-') || 'rozmowa');
+    const key = 'fallback:' + (orzechMode ? 'orzech:' : '') + (tokens(q).slice(0, 3).join('-') || 'rozmowa');
     const turn = turnCounts.get(key) || 0;
     turnCounts.set(key, turn + 1);
     if (/\b(dzieki|dziekuje|thx)\b/u.test(text)) {
@@ -552,7 +556,7 @@ window.MadraAI = (() => {
   // Codzienne odpowiedzi dla rozwijanej linii Orzechów.
   function orzechSmallTalk(q) {
     const text = normalize(q);
-    const greeting = /^(czesc|hej|hejka|siema|siemka|serwus|elo|witam|witaj|witajcie|czolem|dzien dobry|dobry wieczor)$/u.test(text);
+    const greeting = /^(czesc|hej|hejka|siema|siemka|serwus|elo|witam|witaj|witajcie|czolem|dzien dobry|dobry wieczor|hello|hi|hey|hi there|hey there|hello there)$/u.test(text);
     const withEmoji = (value, key) => { const turn = turnCounts.get(key) || 0; turnCounts.set(key, turn + 1); return value + ' ' + ['😎','😀','😁','😆'][turn % 4]; };
     if (greeting) {
       const key = 'orzech-greeting:' + text, turn = turnCounts.get(key) || 0;
@@ -571,19 +575,75 @@ window.MadraAI = (() => {
     return null;
   }
 
+  // Bezpieczny kalkulator: parsuje dozwolone tokeny matematyczne bez eval().
   function calculateMath(question) {
     let input = String(question || '').toLocaleLowerCase('pl').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/ł/g, 'l').replace(/(\d),(?=\d)/gu, '$1.');
-    input = input.replace(/[×·]/gu, ' * ').replace(/[÷]/gu, ' / ').replace(/[−–—]/gu, ' - ').replace(/(\d|\))\s*:\s*(?=(\d|\())/gu, '$1 / ').replace(/\bx\b/gu, ' * ');
-    input = input.replace(/^\s*(?:(?:ile\s+(?:to|wynosi)|policz(?:\s+mi)?|oblicz(?:\s+mi)?|podaj\s+wynik(?:\s+dzialania)?)\s*)+/u, ' ');
-    input = input.replace(/\b(mnozone\s+przez|pomnozyc\s+przez|razy|mnozyc)\b/gu, ' * ').replace(/\b(podzielic\s+przez|podzielone\s+przez|dzielone\s+przez|dzielic\s+przez)\b/gu, ' / ').replace(/\b(dodac|plus)\b/gu, ' + ').replace(/\b(odjac|minus)\b/gu, ' - ').replace(/\b(modulo|mod)\b/gu, ' % ');
+    input = input.replace(/[×·]/gu, ' * ').replace(/[÷]/gu, ' / ').replace(/[−–—]/gu, ' - ')
+      .replace(/(\d)\s*x\s*(?=\d)/gu, '$1 * ').replace(/\bx\b/gu, ' * ')
+      .replace(/√/gu, ' sqrt ')
+      .replace(/\bpierwiastek(?:\s+kwadratowy)?\s+z\b/gu, ' sqrt ')
+      .replace(/\bdo\s+kwadratu\b/gu, ' ^ 2 ')
+      .replace(/\bdo\s+sześcianu\b/gu, ' ^ 3 ')
+      .replace(/\bdo\s+szescianu\b/gu, ' ^ 3 ')
+      .replace(/\bdo\s+potegi\b/gu, ' ^ ')
+      .replace(/(\d|\))\s*:\s*(?=(\d|\())/gu, '$1 / ')
+      .replace(/%\s*(?:z|of)\b/gu, ' pct ')
+      .replace(/\bprocent(?:y|ow|a|u)?\b/gu, ' pct ')
+      .replace(/\b(podziel(?:ic)?\s+przez|podzielone\s+przez|dzielone\s+przez|dzielic\s+przez)\b/gu, ' / ')
+      .replace(/\b(mnozone\s+przez|pomnozone\s+przez|pomnozyc\s+przez|pomnoz\s+przez)\b/gu, ' * ')
+      .replace(/\b(dodac|dodaj|dodajcie|plus)\b/gu, ' + ')
+      .replace(/\b(odjac|odejmij|odejmijcie|minus)\b/gu, ' - ')
+      .replace(/\b(mnoz|mnozone|pomnozone|mnozyc|pomnoz|pomnozyc|razy)\b/gu, ' * ')
+      .replace(/\b(podziel|podzielic|dzielic)\b/gu, ' / ')
+      .replace(/\b(przez|i|z|of)\b/gu, ' ')
+      .replace(/\b(modulo|mod)\b/gu, ' % ')
+      .replace(/\b(oblicz(?:ysz|cie)?|policz(?:ysz)?|powiedz|podaj|wynik|dzialania?|prosze|ile|wynosi|jest|to|czy|co|mi|jaki|jaka|jakie|bedzie|wyniesie)\b/gu, ' ')
+      .replace(/[?!.,;]+\s*$/u, ' ');
     const numbers = {zero:0,jeden:1,jedna:1,jedno:1,jednego:1,dwa:2,dwie:2,dwoch:2,trzy:3,trzech:3,cztery:4,czterech:4,piec:5,pieciu:5,szesc:6,szesciu:6,siedem:7,siedmiu:7,osiem:8,osmiu:8,dziewiec:9,dziewieciu:9,dziesiec:10,jedenascie:11,dwanascie:12,trzynascie:13,czternascie:14,pietnascie:15,szesnascie:16,siedemnascie:17,osiemnascie:18,dziewietnascie:19,dwadziescia:20,trzydziesci:30,czterdziesci:40,piecdziesiat:50,szescdziesiat:60,siedemdziesiat:70,osiemdziesiat:80,dziewiecdziesiat:90,sto:100};
-    const words = input.match(/\d+(?:\.\d+)?|[()+*/%-]|[a-z]+/gu) || []; if (!words.length) return null;
-    const tokens = []; for (const word of words) { if (Object.hasOwn(numbers,word)) tokens.push(String(numbers[word])); else if (/^\d+(?:\.\d+)?$/u.test(word)||/^[()+*/%-]$/u.test(word)) tokens.push(word); else return null; }
-    for(let i=1;i<tokens.length;i++){const previous=tokens[i-1],current=tokens[i];if((/^\d+(?:\.\d+)?$/u.test(previous)&&current==='(')||(previous===')'&&(/^\d+(?:\.\d+)?$/u.test(current)||current==='(')))tokens.splice(i++,0,'*')}if (!tokens.some(token=>/^[+*/%-]$/.test(token)||token==='-')) return null;
-    let position=0; const factor=()=>{if(tokens[position]==='+'||tokens[position]==='-'){const sign=tokens[position++],value=factor();return sign==='-'?-value:value}if(tokens[position]==='('){position++;const value=expression();if(tokens[position++]!==')')throw Error();return value}const token=tokens[position++];if(!token||!/^\d+(?:\.\d+)?$/u.test(token))throw Error();const value=Number(token);if(!Number.isFinite(value))throw Error();return value};
-    const term=()=>{let value=factor();while(['*','/','%'].includes(tokens[position])){const op=tokens[position++],right=factor();if((op==='/'||op==='%')&&right===0)throw Error();value=op==='*'?value*right:op==='/'?value/right:value%right}return value};
-    const expression=()=>{let value=term();while(tokens[position]==='+'||tokens[position]==='-'){const op=tokens[position++],right=term();value=op==='+'?value+right:value-right}return value};
-    try{const result=expression();if(position!==tokens.length||!Number.isFinite(result)||Math.abs(result)>1e15)return null;const rounded=Math.round((result+Number.EPSILON)*1e10)/1e10;const emojiTurn=turnCounts.get('orzech-math-emoji')||0;turnCounts.set('orzech-math-emoji',emojiTurn+1);return 'Wynik działania to '+new Intl.NumberFormat('pl-PL',{maximumFractionDigits:10}).format(Object.is(rounded,-0)?0:rounded)+'. '+['😎','😀','😁','😆'][emojiTurn%4]}catch{return null}
+    const words = input.match(/\d+(?:\.\d+)?|[()+*/%^\-]|[a-z]+/gu) || [];
+    if (!words.length) return null;
+    const tokens = [];
+    for (const word of words) {
+      if (Object.hasOwn(numbers, word)) tokens.push(String(numbers[word]));
+      else if (/^\d+(?:\.\d+)?$/u.test(word) || /^[()+*/%^\-]$/u.test(word) || word === 'sqrt' || word === 'pct') tokens.push(word);
+      else return null;
+    }
+    // Znak % jest procentem po liczbie na końcu lub przed innym operatorem,
+    // a modulo między dwiema liczbami.
+    for (let i = 0; i < tokens.length; i++) if (tokens[i] === '%' && i > 0 && (/^\d/u.test(tokens[i - 1]) || tokens[i - 1] === ')') && (!tokens[i + 1] || /^[+\-*/^)]$/u.test(tokens[i + 1]))) tokens[i] = 'pct';
+    for (let i = 1; i < tokens.length; i++) {
+      const previous = tokens[i - 1], current = tokens[i];
+      const previousValue = /^\d+(?:\.\d+)?$/u.test(previous) || previous === ')' || previous === 'pct';
+      const currentValue = /^\d+(?:\.\d+)?$/u.test(current) || current === '(' || current === 'sqrt';
+      if (previousValue && currentValue) tokens.splice(i++, 0, '*');
+    }
+    if (!tokens.some(token => /^[+*/%^\-]$/u.test(token) || token === 'pct' || token === 'sqrt')) return null;
+    let position = 0;
+    const primary = () => {
+      if (tokens[position] === 'sqrt') { position++; const value = primary(); if (value < 0) throw Error(); return Math.sqrt(value); }
+      if (tokens[position] === '(') { position++; const value = expression(); if (tokens[position++] !== ')') throw Error(); return value; }
+      const token = tokens[position++]; if (!token || !/^\d+(?:\.\d+)?$/u.test(token)) throw Error(); const value = Number(token); if (!Number.isFinite(value)) throw Error(); return value;
+    };
+    const factor = () => {
+      if (tokens[position] === '+' || tokens[position] === '-') { const sign = tokens[position++]; const value = factor(); return sign === '-' ? -value : value; }
+      let value = primary();
+      while (tokens[position] === 'pct') { position++; value /= 100; }
+      if (tokens[position] === '^') { position++; value = value ** factor(); }
+      if (!Number.isFinite(value)) throw Error();
+      return value;
+    };
+    const term = () => { let value = factor(); while (['*','/','%'].includes(tokens[position])) { const op = tokens[position++], right = factor(); if ((op === '/' || op === '%') && right === 0) throw Error(); value = op === '*' ? value * right : op === '/' ? value / right : value % right; } return value; };
+    const expression = () => { let value = term(); while (tokens[position] === '+' || tokens[position] === '-') { const op = tokens[position++], right = term(); value = op === '+' ? value + right : value - right; } return value; };
+    try {
+      const result = expression();
+      if (position !== tokens.length || !Number.isFinite(result) || Math.abs(result) > 1e15) return null;
+      const rounded = Math.round((result + Number.EPSILON) * 1e10) / 1e10;
+      const formatted = new Intl.NumberFormat('pl-PL',{maximumFractionDigits:10}).format(Object.is(rounded,-0)?0:rounded);
+      const turn = turnCounts.get('orzech-math-style') || 0; turnCounts.set('orzech-math-style',turn+1);
+      const emojiTurn = turnCounts.get('orzech-math-emoji') || 0; turnCounts.set('orzech-math-emoji',emojiTurn+1);
+      const replies = [`Wynik działania to ${formatted}.`,`Po obliczeniu wychodzi ${formatted}.`,`To daje ${formatted}.`,`Otrzymujemy ${formatted}.`,`Z obliczenia wychodzi ${formatted}.`];
+      return replies[turn % replies.length] + ' ' + ['😎','😀','😁','😆'][emojiTurn % 4];
+    } catch { return null; }
   }
 
   function isPoliteConversation(q) {
@@ -619,9 +679,20 @@ window.MadraAI = (() => {
   }
 
   function orzechTokens(value) {
-    const canonical = normalize(value).replace(/\b(czesc|hej|hejka|siema|siemka|serwus|elo|witam|witaj|witajcie|czolem|dzien dobry|dobry wieczor)\b/gu, 'intent-powitanie');
+    // Usuwa część grzecznościowych wstępów oraz sprowadza wybrane parafrazy
+    // do wspólnych pojęć, tak by pytanie nie musiało powtarzać tytułu źródła.
+    const canonical = normalize(value)
+      .replace(/\b(czesc|hej|hejka|siema|siemka|serwus|elo|witam|witaj|witajcie|czolem|dzien dobry|dobry wieczor)\b/gu, 'intent-powitanie')
+      .replace(/\b(co wiesz|opowiedz|powiedz|wyjasnij|wytlumacz|napisz|podaj)\b/gu, ' ')
+      .replace(/\b(chcialbym|chcialabym|chce|prosze|mi|mnie|troche|krotko|dokladnie|na temat|o tym|o tym wszystkim)\b/gu, ' ')
+      .replace(/\s+/gu, ' ').trim();
+    const concepts = new Map([
+      ...['powod','powody','powodu','powodem','przyczyna','przyczyny','przyczyne'].map(word => [word, 'pojecie-przyczyna']),
+      ...['definicja','definicje','definicji','znaczenie','znaczenia','znaczeniu','znaczy','oznacza'].map(word => [word, 'pojecie-znaczenie']),
+      ...['stolica','stolicy','stolice'].map(word => [word, 'pojecie-stolica'])
+    ]);
     return unique(canonical.split(/\s+/u).filter(word => word.length > 1 && !STOP.has(word))
-      .map(word => word === 'intent-powitanie' ? word : stem(word)).filter(Boolean));
+      .map(word => word === 'intent-powitanie' ? word : (concepts.get(word) || stem(word))).filter(Boolean));
   }
 
   function overlapFor12(query, text) {
@@ -646,7 +717,7 @@ window.MadraAI = (() => {
     return selected;
   }
 
-  function inferPairFamily(pair){const explicit=String(pair?.family||pair?.category||'').trim();if(explicit)return normalize(explicit);const q=normalize(pair?.q||'');if(/\b(czesc|hej|hejka|siema|elo|witaj|witam|witajcie|dzien dobry|dobry wieczor)\b/u.test(q))return 'powitania';if(/\b(do widzenia|dowidzenia|pa|papa|na razie|dobranoc|zegnaj|trzymaj sie)\b/u.test(q))return 'pozegnania';if(/\b(dzieki|dziekuje|thx)\b/u.test(q))return 'podziekowania';if(/\b(przepraszam|przykro mi|wybacz|moja wina)\b/u.test(q))return 'przeprosiny';return ''}
+  function inferPairFamily(pair){const explicit=String(pair?.family||pair?.category||'').trim();if(explicit)return normalize(explicit);const q=normalize(pair?.q||'');if(/\b(czesc|hej|hejka|siema|elo|witaj|witam|witajcie|dzien dobry|dobry wieczor|hello|hi|hey)\b/u.test(q))return 'powitania';if(/\b(do widzenia|dowidzenia|pa|papa|na razie|dobranoc|zegnaj|trzymaj sie)\b/u.test(q))return 'pozegnania';if(/\b(dzieki|dziekuje|thx)\b/u.test(q))return 'podziekowania';if(/\b(przepraszam|przykro mi|wybacz|moja wina)\b/u.test(q))return 'przeprosiny';return ''}
 function chooseFamilyVariant(items,query){const base=items[0];const family=inferPairFamily(base?.p);if(!family)return base;const variants=items.filter(item=>inferPairFamily(item.p)===family&&typeof item.p?.a==='string'&&item.p.a.trim());const uniqueAnswers=[...new Map(variants.map(item=>[normalize(item.p.a),item])).values()];if(uniqueAnswers.length<2)return base;const key='family:'+family+':'+normalize(query);const turn=turnCounts.get(key)||0;turnCounts.set(key,turn+1);const byLength=[...uniqueAnswers].sort((a,b)=>(a.p.a.trim().match(/\S+/gu)||[]).length-(b.p.a.trim().match(/\S+/gu)||[]).length);return byLength[turn%2===0?0:byLength.length-1]}
 
   function rank(q, pairs = [], inflectionAware = false) {
@@ -670,9 +741,9 @@ function chooseFamilyVariant(items,query){const base=items[0];const family=infer
     return text.match(/[^.!?]+[.!?]+|[^.!?]+$/gu)?.map(s => s.trim()).filter(Boolean) || [];
   }
 
-  /* Wyszukuje w wiedzy modelu fragmenty podobne do pytania, ocenia trafność zdań i raportuje postęp pracy. */async /* Wyszukuje w wiedzy modelu fragmenty podobne do pytania, ocenia trafność zdań i raportuje postęp pracy. */function searchKnowledge(q, documents, onProgress, expanded=false, smartFocus=false) {
-    const matchText = smartFocus ? overlapFor12 : overlap;
-    const query = unique((smartFocus ? tokensFor12 : tokens)(q));
+  async function searchKnowledge(q, documents, onProgress, expanded=false, smartFocus=false, orzechMode=false) {
+    const matchText = orzechMode ? ((a,b)=>overlap(a,b,true)) : smartFocus ? overlapFor12 : overlap;
+    const query = unique((orzechMode ? orzechTokens : smartFocus ? tokensFor12 : tokens)(q));
     if (!query.length || !documents?.length) { onProgress(95); return null; }
     const candidates = [];
     for (let i = 0; i < documents.length; i++) {
@@ -702,7 +773,35 @@ function chooseFamilyVariant(items,query){const base=items[0];const family=infer
     if (!best) return null;
 
     let chosen;
-    if (smartFocus && query.length > 1 && best.titleMatch.coverage < .9) {
+    if (orzechMode) {
+      // Orzech wybiera tylko zdania z materiału, które pasują do pytania.
+      // Przy szerokim pytaniu o temat może rotować po zdaniach tego samego
+      // artykułu, a przy pytaniu szczegółowym trzyma się najmocniej trafnych.
+      let relevant = best.rankedSentences.filter(item => item.hits > 0 &&
+        item.score >= Math.max(.12, best.bestSentence.score - .28));
+      if (!relevant.length) relevant = [best.bestSentence];
+      const broadTopic = best.titleMatch.hits > 0 && best.titleMatch.coverage >= .7;
+      if (!broadTopic && query.length > 1) {
+        const focused = relevant.filter(item => item.coverage >= Math.max(.35, best.bestSentence.coverage - .2));
+        if (focused.length) relevant = focused;
+      }
+      const rotationKey = 'orzech-knowledge:' + normalize(q) + ':' + normalize(best.doc.title || '');
+      const turn = turnCounts.get(rotationKey) || 0;
+      turnCounts.set(rotationKey, turn + 1);
+      const rankedRelevant = [...relevant].sort((a, b) => b.score - a.score || a.index - b.index);
+      const seed = rankedRelevant[turn % rankedRelevant.length];
+      chosen = [seed];
+      // Co drugą odpowiedź dodajemy najwyżej jedno powiązane zdanie. Dzięki
+      // temu długość i dobór fragmentów są zmienne, ale nie streszczamy całego źródła.
+      if (rankedRelevant.length > 1 && turn % 3 === 1) {
+        const additional = rankedRelevant.find(item => item.index !== seed.index &&
+          (broadTopic || item.coverage >= .5));
+        if (additional) chosen.push(additional);
+      }
+      chosen.sort((a, b) => a.index - b.index);
+    } else if (smartFocus && query.length > 1 && best.titleMatch.coverage < .9) {
+      // Pytanie o kilka konkretnych rzeczy ma dostać tylko zdania, które je zawierają.
+      // Nie dokładamy automatycznie sąsiednich zdań z całego artykułu.
       const focused = best.rankedSentences.filter(item => item.hits > 0)
         .slice(0, best.bestSentence.coverage >= .72 ? 1 : 2);
       chosen = focused.sort((a, b) => a.index - b.index);
@@ -739,12 +838,46 @@ function chooseFamilyVariant(items,query){const base=items[0];const family=infer
         .sort((a,b)=>b.score-a.score||a.index-b.index).map(item=>item.sentence):[]};
   }
 
+  function resolveOrzechContextQuestion(q,conversation=[]){
+    const text=normalize(q),words=text.split(/\s+/u).filter(Boolean);
+    if(words.length>8)return null;
+    // Pełne pytania z podanym tematem samodzielne; krótkie zaimkowe pytania
+    // i dopowiedzenia powinny odziedziczyć temat z ostatniej wymiany.
+    if(/^(?:co to jest|kim jest|kto to jest|co to znaczy|co oznacza|ile wynosi|ile to jest)\s+\S+/u.test(text))return null;
+    // „Co to krowa?” i „Kto to Magda?” zawierają własny temat, więc nie są
+    // pytaniami zależnymi od poprzedniej wiadomości. Opcjonalne „jest” lub
+    // „znaczy” po frazie też nie powinno zmienić ich w pytanie kontekstowe.
+    if(/^(?:a\s+)?(?:co\s+to|kto\s+to)\s+(?:(?:jest|byl|byla|znaczy|oznacza)\s+)?\S+/u.test(text))return null;
+    const dependent=/^(?:a\s+)?(?:dlaczego|czemu|kto to|co to(?: znaczy)?|jak to|a co|a kto|a jak|a dlaczego|ile to|czy on|czy ona|czy oni|czy one|czy to|a ten|a ta|a te|a tym|co z tym|co z nim|co z nia|co z nimi|ten sam|to samo)\b/u.test(text)||
+      /\b(?:tego|temu|tym|nim|niej|nich|jego|jej|drugim|drugiego|pierwszym|pierwszego)\b/u.test(text);
+    if(!dependent)return null;
+    const isDependentText=value=>{
+      const normalized=normalize(value),count=normalized.split(/\s+/u).filter(Boolean).length;
+      return count<=8&&(/^(?:a\s+)?(?:dlaczego|czemu|kto to|co to(?: znaczy)?|jak to|a co|a kto|a jak|a dlaczego|ile to|czy on|czy ona|czy oni|czy one|czy to|a ten|a ta|a te|a tym|co z tym|co z nim|co z nia|co z nimi|ten sam|to samo)\b/u.test(normalized)||/\b(?:tego|temu|tym|nim|niej|nich|jego|jej|drugim|drugiego|pierwszym|pierwszego)\b/u.test(normalized));
+    };
+    const userTurns=conversation.filter(item=>item?.role==='user'&&item.text);
+    const topicTurn=[...userTurns].reverse().find(item=>!isDependentText(item.text)&&orzechTokens(item.text).length);
+    const lastReply=[...conversation].reverse().find(item=>item?.role==='assistant'&&item.text);
+    if(!topicTurn||!lastReply)return{query:'',topic:topicTurn?.text||'',anchors:[]};
+    const replyParts=String(lastReply.text).split(/\r?\n|(?<=[.!?])\s+/u).map(part=>part.replace(/^\s*(?:[-*•]|\d+[.)])\s*/u,'').trim()).filter(Boolean);
+    const ordinal=/\b(?:drugim|drugiego|drugiej)\b/u.test(text)?1:/\b(?:pierwszym|pierwszego|pierwszej)\b/u.test(text)?0:-1;
+    const focusedReply=ordinal>=0&&replyParts[ordinal]?replyParts[ordinal]:lastReply.text;
+    const topicTerms=orzechTokens(topicTurn.text),replyTerms=orzechTokens(focusedReply);
+    const shared=topicTerms.filter(term=>replyTerms.includes(term));
+    const anchors=unique(shared.length?shared:topicTerms).slice(0,3);
+    return{query:anchors.length?`${q} ${anchors.join(' ')}`:'',topic:topicTurn.text,anchors};
+  }
+
   async function prepare(q, pairs = [], knowledge = [], onProgress = () => {}, conversation = [], options = {}) {
     const report = value => { try { onProgress(Math.max(0, Math.min(100, value))); } catch {} };
     report(0);
     await yieldToBrowser();
+    const contextQuestion=options.familyDiversity?resolveOrzechContextQuestion(q,conversation):null;
+    const searchQuestion=contextQuestion?(contextQuestion.query||''):q;
+    if(contextQuestion&&!searchQuestion)return{text:'Nie mam pewności, do którego wcześniejszego tematu nawiązujesz. Możesz doprecyzować, o który fragment chodzi?',warning:false,generate:false,index:-1,contextClarification:true};
     const mathAnswer = options.familyDiversity ? calculateMath(q) : null;
     if (mathAnswer) {
+      // Pokaż etap analizy obliczenia przed wyświetleniem gotowego wyniku.
       const complexity = (String(q).match(/[+\-*\/×÷:()%√^]|\b(?:plus|minus|razy|podziel|pomnoz|dodaj|odejmij)\b/giu) || []).length;
       const thinkingMs = Math.min(1250, 550 + complexity * 110);
       report(18); await yieldToBrowser();
@@ -754,12 +887,12 @@ function chooseFamilyVariant(items,query){const base=items[0];const family=infer
       report(100);
       return { text: mathAnswer, warning: false, generate: false, index: -1, toolUsed: 'math' };
     }
-    const ranked = rank(q, pairs, !!options.familyDiversity).filter(item => typeof item.p?.a === 'string' && item.p.a.trim());
+    const ranked = rank(searchQuestion, pairs, !!options.familyDiversity).filter(item => typeof item.p?.a === 'string' && item.p.a.trim());
     report(35);
     const best = ranked[0];
     const smallTalk = options.familyDiversity ? orzechSmallTalk(q) : null;
     if (smallTalk && !(best && best.s >= .67 && best.coverage >= .7)) return { text: smallTalk, warning: false, generate: false, index: -1 };
-    const source = await searchKnowledge(q, knowledge, report, !!options.expandedKnowledge, !!options.sterling12);
+    const source = await searchKnowledge(searchQuestion, knowledge, report, !!options.expandedKnowledge, !!options.sterling12, !!options.familyDiversity);
     report(97);
 
     // Pewny przykład treningowy ma pierwszeństwo. Wybór wariantu uwzględnia
@@ -772,17 +905,19 @@ function chooseFamilyVariant(items,query){const base=items[0];const family=infer
     }
 
     if (source && source.score >= .55) {
-      return { text: options.expandedKnowledge ? source.text : varyWording(source.text, 'answer:' + normalize(source.text)), warning: source.score < .72, generate: false, index: -1, source: source.document, remaining:source.remaining||[] };
+      return { text: options.familyDiversity || options.expandedKnowledge ? source.text : varyWording(source.text, 'answer:' + normalize(source.text)), warning: source.score < .72, generate: false, index: -1, source: source.document, remaining:source.remaining||[] };
     }
 
-    if (best && best.s >= .42 && best.coverage >= .55) {
-      return { text: varyWording(best.p.a, 'answer:' + normalize(best.p.a)), warning: true, generate: false, index: best.i };
+    if (!contextQuestion&&best && best.s >= .42 && best.coverage >= .55) {
+      return { text: options.familyDiversity ? best.p.a.trim() : varyWording(best.p.a, 'answer:' + normalize(best.p.a)), warning: true, generate: false, index: best.i };
     }
 
-    return { text: conversationalReply(q, conversation), warning: !isPoliteConversation(q), generate: false, index: -1 };
+    if(contextQuestion)return{text:`Nie znalazłem pewnej odpowiedzi do wcześniejszego tematu „${contextQuestion.topic}”. Możesz doprecyzować, o który szczegół pytasz?`,warning:false,generate:false,index:-1,contextClarification:true};
+
+    return { text: conversationalReply(q, conversation, !!options.familyDiversity), warning: !isPoliteConversation(q), generate: false, index: -1 };
   }
 
-  /* Przygotowuje odpowiedź z najlepiej dopasowanych przykładów i zdań z wiedzy modelu. */async /* Przygotowuje odpowiedź z najlepiej dopasowanych przykładów i zdań z wiedzy modelu. */function generate(q, pairs, sourceIndex, emit, onProgress = () => {}, conversation = []) {
+  async function generate(q, pairs, sourceIndex, emit, onProgress = () => {}, conversation = []) {
     const ranked = rank(q, pairs || []).filter(item => item.p?.a);
     const chosen = ranked.find(item => item.i === sourceIndex) || ranked[0];
     const text = chosen && chosen.s >= .42 ? varyWording(chosen.p.a, 'answer:' + normalize(chosen.p.a)) : conversationalReply(q, conversation);
@@ -794,7 +929,7 @@ function chooseFamilyVariant(items,query){const base=items[0];const family=infer
     }
   }
 
-  /* Czyta dodatkowy plik tekstowy w formacie TYTUŁ / TEKST i zamienia go na dokumenty do wyszukania. */async /* Czyta dodatkowy plik tekstowy w formacie TYTUŁ / TEKST i zamienia go na dokumenty do wyszukania. */function loadTextKnowledge(path = '/Baza%20do%20importu.txt') {
+  async function loadTextKnowledge(path = '/Baza%20do%20importu.txt') {
     try {
       const response = await fetch(path, { cache: 'no-store' });
       if (!response.ok) return [];
@@ -806,7 +941,7 @@ function chooseFamilyVariant(items,query){const base=items[0];const family=infer
     } catch { return []; }
   }
 
-  /* Łączy wiedzę wczytaną z pliku z wiedzą modelu, pomijając identyczne wpisy. */function mergeKnowledge(model, extra) {
+  function mergeKnowledge(model, extra) {
     const combined = [...(Array.isArray(model?.knowledge) ? model.knowledge : [])];
     const existing = new Set(combined.map(item => normalize(item.title) + '|' + normalize(item.text)));
     for (const item of extra || []) {
@@ -817,7 +952,7 @@ function chooseFamilyVariant(items,query){const base=items[0];const family=infer
     return combined;
   }
 
-  /* Gdy dopasowanie jest słabe, próbuje ułożyć odpowiedź z najbliższych znanych fragmentów. */function forceReply(q, pairs = [], knowledge = [], conversation = [], options = {}) {
+  function forceReply(q, pairs = [], knowledge = [], conversation = [], options = {}) {
     const matchText = options.sterling12 ? overlapFor12 : overlap;
     const rankedPairs = rank(q, pairs).filter(item => typeof item.p?.a === 'string' && item.p.a.trim());
     const usablePair = rankedPairs.find(item => item.hits > 0 && item.s >= .12);
@@ -840,21 +975,101 @@ function chooseFamilyVariant(items,query){const base=items[0];const family=infer
   return { prepare, rank, generate, loadTextKnowledge, mergeKnowledge, forceReply, varyOrzechReply };
 })();
 
-/* Dodawaj tu nazwy plików .mai z folderu Models; GitHub Pages nie udostępnia listowania katalogu. */const PUBLISHED_MODELS=['Orzech 2.0.mai','Sterling 1.0.mai','Sterling 1.1.mai','Sterling 1.2.mai'];window.MADRAAI_PUBLISHED_MODELS=PUBLISHED_MODELS;const MODEL_RELEASES={'Orzech 2.0.mai':'16 października 2026','Sterling 1.0.mai':'14 października 2026','Sterling 1.1.mai':'14 października 2026','Sterling 1.2.mai':'15 października 2026'};let models=[],sending=false,conversation=[];const $=s=>document.querySelector(s),qsa=s=>document.querySelectorAll(s);
-/* Odkodowuje plik .mai i uzupełnia brakujące pola modelu pustymi listami. */function decodeModelFile(raw,fallback){if(!raw.startsWith('MDA1:'))throw Error('Nieprawidłowy plik modelu');const hex=raw.slice(5).trim(),bytes=new Uint8Array(hex.length/2);for(let i=0;i<bytes.length;i++)bytes[i]=(parseInt(hex.slice(i*2,i*2+2),16)-((i*37+19)&255)+256)&255;const m=JSON.parse(new TextDecoder().decode(bytes));m.name=m.name||fallback;m.pairs=Array.isArray(m.pairs)?m.pairs:[];m.memory=Array.isArray(m.memory)?m.memory:[];m.ratings=Array.isArray(m.ratings)?m.ratings:[];m.knowledge=Array.isArray(m.knowledge)?m.knowledge:[];return m}
+/* Dodawaj tu nazwy plików .mai z folderu Models; GitHub Pages nie udostępnia listowania katalogu. */const PUBLISHED_MODELS=['Orzech 2.1.mai','Orzech 2.0.mai','Sterling 1.0.mai','Sterling 1.1.mai','Sterling 1.2.mai'];window.MADRAAI_PUBLISHED_MODELS=PUBLISHED_MODELS;const MODEL_RELEASES={'Orzech 2.1.mai':'17 października 2026','Orzech 2.0.mai':'16 października 2026','Sterling 1.0.mai':'14 października 2026','Sterling 1.1.mai':'14 października 2026','Sterling 1.2.mai':'15 października 2026'};let models=[],sending=false,conversation=[];const $=s=>document.querySelector(s),qsa=s=>document.querySelectorAll(s);
+
+/* Stan rozmowy: Orzech 2.x zapamiętuje rozmowę w localStorage tej przeglądarki, pozostałe modele tylko do odświeżenia strony. */
+const conversationMemoryPrefix='madraai-orzech-conversation-v1:';
+const pendingMoreMemoryPrefix='madraai-orzech-followup-v1:';
+const volatileConversations=new Map();
+let activeConversationModel='';
+const welcomeTemplate=document.querySelector('.welcome')?.cloneNode(true)||null;
+function conversationStorageKey(modelName,prefix=conversationMemoryPrefix){return prefix+String(modelName||'').trim().toLocaleLowerCase('pl')}
+function readOrzechMemory(modelName){
+  try{
+    const stored=JSON.parse(localStorage.getItem(conversationStorageKey(modelName))||'null');
+    if(!stored||stored.version!==1||!Array.isArray(stored.turns))return[];
+    return stored.turns.filter(item=>(item?.role==='user'||item?.role==='assistant')&&typeof item.text==='string'&&item.text.trim()).slice(-40);
+  }catch{return[]}
+}
+function saveOrzechMemory(modelName,turns=conversation){
+  if(!usesFamilyDiversity(modelName))return;
+  try{
+    const compact=turns.slice(-40).map(item=>({role:item.role,text:String(item.text||'').slice(0,4000),displayText:String(item.displayText||item.text||'').slice(0,4000),question:String(item.question||'').slice(0,1000),warning:!!item.warning,toolUsed:String(item.toolUsed||''),at:Number(item.at)||0}));
+    localStorage.setItem(conversationStorageKey(modelName),JSON.stringify({version:1,updatedAt:Date.now(),turns:compact}));
+  }catch{}
+}
+function restorePendingMore(modelName){
+  try{
+    const saved=JSON.parse(localStorage.getItem(conversationStorageKey(modelName,pendingMoreMemoryPrefix))||'null');
+    return saved&&saved.model===modelName&&Date.now()-Number(saved.updatedAt||0)<7*24*60*60*1000?saved.value:null;
+  }catch{return null}
+}
+function savePendingMore(modelName){
+  if(!usesFamilyDiversity(modelName))return;
+  try{
+    const key=conversationStorageKey(modelName,pendingMoreMemoryPrefix);
+    if(pendingMore?.model===modelName)localStorage.setItem(key,JSON.stringify({model:modelName,updatedAt:Date.now(),value:pendingMore}));
+    else localStorage.removeItem(key);
+  }catch{}
+}
+/* Po zmianie modelu wczytuje jego własną rozmowę i odtwarza ją w oknie czatu. */
+function switchConversationToSelectedModel(){
+  const model=models[+$('#models').value];
+  if(activeConversationModel)volatileConversations.set(activeConversationModel,conversation);
+  activeConversationModel=model?.name||'';
+  conversation=model?(usesFamilyDiversity(model.name)?readOrzechMemory(model.name):(volatileConversations.get(model.name)||[])):[];
+  pendingMore=model&&usesFamilyDiversity(model.name)?restorePendingMore(model.name):null;
+  const chat=$('#chat');
+  chat.replaceChildren();
+  if(!conversation.length){if(welcomeTemplate)chat.append(welcomeTemplate.cloneNode(true));return}
+  const locale=window.MadraAISettings?.locale==='en'?'en-US':'pl-PL';
+  for(const item of conversation){
+    const{bubble,copyButton,time}=add(item.displayText||item.text,item.role==='user'?'user':'bot',model?.name);
+    if(item.at){const stamp=new Date(item.at);time.dateTime=stamp.toISOString();time.textContent=new Intl.DateTimeFormat(locale,{hour:'2-digit',minute:'2-digit'}).format(stamp)}else time.textContent='';
+    if(item.role==='assistant'){
+      if(copyButton)copyButton.hidden=!bubble.textContent.trim();
+      if(item.warning)addWeakAnswerWarning(bubble);
+      if(item.toolUsed)addToolUsageNotice(bubble);
+    }
+  }
+  scroll();
+}
+
+/* Odkodowuje plik .mai (lub JSON) i uzupełnia brakujące pola modelu pustymi listami. */function decodeModelFile(raw,fallbackName){
+  let model;
+  if(raw.startsWith('MDA1:')){
+    const hex=raw.slice(5).trim(),bytes=new Uint8Array(hex.length/2);
+    for(let i=0;i<bytes.length;i++)bytes[i]=(parseInt(hex.slice(i*2,i*2+2),16)-((i*37+19)&255)+256)&255;
+    model=JSON.parse(new TextDecoder().decode(bytes));
+  }else model=JSON.parse(raw.replace(/^\uFEFF/,''));
+  if(!Array.isArray(model.pairs)){
+    const pairs=[];
+    for(const example of model.examples||[]){const q=example.input||example.question||'',answers=example.answers||[example.output||example.answer].filter(Boolean);for(const answer of answers)if(q&&answer)pairs.push({q,a:answer})}
+    for(const fn of model.functions||[])if(fn.category!=='additional')for(const q of fn.phrases||[])for(const a of fn.answers||[])pairs.push({q,a});
+    if(!pairs.length)throw Error('To nie jest plik modelu');
+    model.pairs=pairs;
+  }
+  if(!model.name)model.name=fallbackName;
+  model.pairs=Array.isArray(model.pairs)?model.pairs:[];
+  model.memory=Array.isArray(model.memory)?model.memory:[];
+  model.ratings=Array.isArray(model.ratings)?model.ratings:[];
+  model.knowledge=Array.isArray(model.knowledge)?model.knowledge:[];
+  return model;
+}
 /* Kategorie modeli z ikonkami i przypisanymi prefixami nazw. */const MODEL_CATEGORIES=[{id:'orzech',label:'Orzech',icon:'Vectors/Orzech.svg',prefix:'Orzech'},{id:'sterling',label:'Sterling',icon:'Vectors/Sterling.svg',prefix:'Sterling'}];
 /* Buduje dwupoziomowy picker: wybór kategorii → lista modeli. Domyślnie ustawia najnowszy model. */function renderModels(){const select=$('#models'),options=$('#modelSelectOptions');select.replaceChildren();options.replaceChildren();models.forEach((m,i)=>{const option=document.createElement('option');option.value=i;option.textContent=m.name;select.append(option)});if(!models.length){const option=document.createElement('option');option.value='';option.textContent='Brak modeli';select.append(option)}// Ustaw domyślnie najnowszy model (Sterling 1.2 jeśli jest)
 if(models.length){const version=name=>{const match=String(name||'').match(/(\d+(?:\.\d+)+)/);return match?match[1].split('.').map(Number):[0]};const compare=(a,b)=>{const x=version(a),y=version(b);for(let j=0;j<Math.max(x.length,y.length);j++){const d=(x[j]||0)-(y[j]||0);if(d)return d}return String(a).localeCompare(String(b),'pl',{numeric:true,sensitivity:'base'})};const newestIndex=models.reduce((best,m,i)=>compare(m.name,models[best]?.name)>0?i:best,0);select.value=String(newestIndex)}
-buildPickerViews(options);updateSelectedModel()}
+buildPickerViews(options);updateSelectedModel();switchConversationToSelectedModel()}
 /* Buduje widok kategorii i widoki poszczególnych kategorii z modelami. */function buildPickerViews(container){container.replaceChildren();// Widok główny: lista kategorii
 const mainView=document.createElement('div');mainView.className='modelPickerView active';mainView.id='pickerViewMain';const mainTitle=document.createElement('div');mainTitle.className='modelPickerTitle';mainTitle.textContent='Wybierz model';mainView.append(mainTitle);const catList=document.createElement('div');catList.className='modelCategoryList';MODEL_CATEGORIES.forEach(cat=>{const catModels=models.filter(m=>m.name.startsWith(cat.prefix));const btn=document.createElement('button');btn.type='button';btn.className='modelCategory';const icon=document.createElement('img');icon.src=cat.icon;icon.alt='';icon.className='modelCategoryIcon';const nameEl=document.createElement('span');nameEl.className='modelCategoryName';nameEl.textContent=cat.label;const meta=document.createElement('span');meta.className='modelCategoryMeta';meta.textContent=catModels.length?catModels.length+' '+(catModels.length===1?'model':catModels.length<5?'modele':'modeli'):'Wkrótce...';btn.append(icon,nameEl,meta);btn.addEventListener('click',()=>showPickerCategory(cat.id,container));catList.append(btn)});mainView.append(catList);container.append(mainView);// Widoki kategorii
-MODEL_CATEGORIES.forEach(cat=>{const catView=document.createElement('div');catView.className='modelPickerView';catView.id='pickerView-'+cat.id;const header=document.createElement('div');header.className='modelPickerHeader';const icon=document.createElement('img');icon.src=cat.icon;icon.alt='';icon.className='modelCategoryIcon';const title=document.createElement('span');title.className='modelPickerTitle';title.textContent=cat.label;const back=document.createElement('button');back.type='button';back.className='modelPickerBack';back.append(createDirectionalArrow('left'));back.setAttribute('aria-label','Wróć do kategorii');back.addEventListener('click',()=>showPickerMain(container));header.append(icon,title,back);catView.append(header);const catModels=models.filter(m=>m.name.startsWith(cat.prefix));if(!catModels.length){const empty=document.createElement('div');empty.className='modelChoiceEmpty';empty.textContent='Na razie brak modeli w tej kategorii.';catView.append(empty)}else{catModels.forEach(m=>{const i=models.indexOf(m);const choice=document.createElement('button');choice.type='button';choice.className='modelChoice';const sel=$('#models');if(Number(sel.value)===i)choice.classList.add('selected');const name=document.createElement('strong');name.textContent=m.name;const date=document.createElement('span');date.textContent=MODEL_RELEASES[m.name+'.mai']||'Model MądraAI';choice.append(name,date);choice.addEventListener('click',()=>{$('#models').value=String(i);updateSelectedModel();closeModelPicker()});catView.append(choice)})}container.append(catView)})}
+MODEL_CATEGORIES.forEach(cat=>{const catView=document.createElement('div');catView.className='modelPickerView';catView.id='pickerView-'+cat.id;const header=document.createElement('div');header.className='modelPickerHeader';const icon=document.createElement('img');icon.src=cat.icon;icon.alt='';icon.className='modelCategoryIcon';const title=document.createElement('span');title.className='modelPickerTitle';title.textContent=cat.label;const back=document.createElement('button');back.type='button';back.className='modelPickerBack';back.append(createDirectionalArrow('left'));back.setAttribute('aria-label','Wróć do kategorii');back.addEventListener('click',()=>showPickerMain(container));header.append(icon,title,back);catView.append(header);const catModels=models.filter(m=>m.name.startsWith(cat.prefix));if(!catModels.length){const empty=document.createElement('div');empty.className='modelChoiceEmpty';empty.textContent='Na razie brak modeli w tej kategorii.';catView.append(empty)}else{catModels.forEach(m=>{const i=models.indexOf(m);const choice=document.createElement('button');choice.type='button';choice.className='modelChoice';const sel=$('#models');if(Number(sel.value)===i)choice.classList.add('selected');const name=document.createElement('strong');name.textContent=m.name;const date=document.createElement('span');date.textContent=MODEL_RELEASES[m.name+'.mai']||'Model MądraAI';choice.append(name,date);choice.addEventListener('click',()=>{const changed=Number($('#models').value)!==i;$('#models').value=String(i);updateSelectedModel();if(changed)switchConversationToSelectedModel();closeModelPicker()});catView.append(choice)})}container.append(catView)})}
 function showPickerMain(container){container.querySelectorAll('.modelPickerView').forEach(v=>v.classList.remove('active'));container.querySelector('#pickerViewMain')?.classList.add('active')}
 function showPickerCategory(id,container){container.querySelectorAll('.modelPickerView').forEach(v=>v.classList.remove('active'));container.querySelector('#pickerView-'+id)?.classList.add('active')}
-/* Wczytuje tylko pliki wymienione w PUBLISHED_MODELS; przeglądarka GitHub Pages nie skanuje folderu Models. */async /* Wczytuje tylko pliki wymienione w PUBLISHED_MODELS; przeglądarka GitHub Pages nie skanuje folderu Models. */function load(){models=[];for(const file of [...PUBLISHED_MODELS].sort((a,b)=>b.localeCompare(a,'pl',{numeric:true,sensitivity:'base'}))){try{const r=await fetch('Models/'+encodeURIComponent(file),{cache:'no-store'});if(r.ok)models.push(decodeModelFile(await r.text(),file.replace(/\.mai$/i,'')))}catch{}}renderModels()}
+/* Wczytuje tylko pliki wymienione w PUBLISHED_MODELS; przeglądarka GitHub Pages nie skanuje folderu Models. */async /* Wczytuje tylko pliki wymienione w PUBLISHED_MODELS; przeglądarka GitHub Pages nie skanuje folderu Models. */function load(){models=[];for(const file of [...PUBLISHED_MODELS].sort((a,b)=>b.localeCompare(a,'pl',{numeric:true,sensitivity:'base'}))){try{const r=await fetch('Models/'+encodeURIComponent(file),{cache:'no-store'});if(r.ok)models.push(decodeModelFile(await r.text(),file.replace(/\.mai$/i,'')));else console.warn('MądraAI: nie wczytano modelu',file,'- HTTP',r.status)}catch(error){console.warn('MądraAI: błąd modelu',file,error)}}renderModels()}
 function scroll(){const c=$('#chat');c.scrollTop=c.scrollHeight}
 /* Dodaje do okna czatu wiadomość użytkownika lub MądraAI wraz z podpisem i godziną. */function add(text,who,modelName){document.querySelector('.welcome')?.remove();const row=document.createElement('div');row.className='message '+(who==='user'?'user':'bot');const av=document.createElement('div');av.className='avatar'+(who==='user'?' userAvatar':'');const img=document.createElement('img');if(who==='user'){img.src='Images/User.png'}else{img.src='Vectors/M%C4%85draAI%20Icon.svg'}img.alt='';av.append(img);const content=document.createElement('div');content.className='msgContent';const label=document.createElement('div');label.className='speaker';label.textContent=who==='user'?'Ty':'MądraAI';const bubble=document.createElement('div');bubble.className='bubble '+(who==='user'?'user':'bot');bubble.textContent=text;const meta=document.createElement('div');meta.className='messageMeta';const time=document.createElement('time');time.className='messageTime';const stamp=new Date();time.dateTime=stamp.toISOString();time.textContent=new Intl.DateTimeFormat(window.MadraAISettings?.locale==='en'?'en-US':'pl-PL',{hour:'2-digit',minute:'2-digit'}).format(stamp);meta.append(time);content.append(label,bubble,meta);let copyButton=null;if(who==='bot'){const menu=document.createElement('details');menu.className='messageMenu';menu.hidden=true;const summary=document.createElement('summary');summary.textContent='⋯';summary.setAttribute('aria-label','Opcje wiadomości');const item=document.createElement('button');item.type='button';item.textContent='Kopiuj wiadomość';item.onclick=async()=>{try{if(navigator.clipboard?.writeText)await navigator.clipboard.writeText(bubble.textContent);else{const field=document.createElement('textarea');field.value=bubble.textContent;document.body.append(field);field.select();if(!document.execCommand('copy'))throw Error();field.remove()}item.textContent='Skopiowano';setTimeout(()=>{item.textContent='Kopiuj wiadomość';menu.open=false},1300)}catch{item.textContent='Nie udało się skopiować';setTimeout(()=>{item.textContent='Kopiuj wiadomość';menu.open=false},1700)}};menu.append(summary,item);meta.append(menu);copyButton=menu}row.append(av,content);$('#chat').append(row);scroll();return{content,bubble,copyButton,time}}
 /* Pokazuje stan i pasek postępu podczas faktycznego wyszukiwania odpowiedzi. */function showThinking(content){const line=document.createElement('div');line.className='thinking';const spin=document.createElement('span');spin.className='spinner';const label=document.createElement('span');label.textContent='Analizuję pytanie i wiedzę';const percent=document.createElement('span');percent.className='thinkingPercent';percent.textContent='0%';line.append(spin,label,percent);content.append(line);return n=>{n=Math.max(0,Math.min(100,Math.round(n)));percent.textContent=n+'%';scroll()}}
+
 function usesExpandedReplies(modelName){
   const match=String(modelName||'').match(/(\d+(?:\.\d+)+)/);
   if(!match)return false;
@@ -862,13 +1077,17 @@ function usesExpandedReplies(modelName){
   return version[0]>1||(version[0]===1&&(version[1]||0)>=1);
 }
 function usesFamilyDiversity(modelName){return /^Orzech\s+2(?:\.|$)/iu.test(String(modelName||'').trim())}
+function isOrzechModel(modelName){return /^Orzech(?:\s|$)/iu.test(String(modelName||'').trim())}
+
 function usesSterling12(modelName){
   const match=String(modelName||'').match(/(\d+(?:\.\d+)+)/);
   if(!match)return false;
-  const[major,minor]=match[1].split('.').map(Number);
+  const [major,minor]=match[1].split('.').map(Number);
   return major>1||(major===1&&(minor||0)>=2);
 }
 const sterling12WordingTurns=new Map();
+// Lekki słownik odmiany językowej: zawiera zamienne formy popularnych słów,
+// a nie przykłady odpowiedzi ani wiedzę o konkretnych osobach lub tematach.
 function varyKnowledgeWording12(text,modelName){
   const key=String(modelName||'Sterling 1.2').toLocaleLowerCase('pl');
   const turn=sterling12WordingTurns.get(key)||0;
@@ -910,18 +1129,6 @@ function varyKnowledgeWording12(text,modelName){
   return result;
 }
 const sterling12EmojiTurns=new Map();
-function addSterling12Emoji(text,modelName){
-  if(!usesSterling12(modelName))return text;
-  const key=String(modelName).toLocaleLowerCase('pl');
-  const storageKey='madraai-sterling12-emoji:'+key;
-  let turn=sterling12EmojiTurns.get(key)||0;
-  try{const saved=Number(localStorage.getItem(storageKey));if(Number.isInteger(saved)&&saved>=0)turn=saved;localStorage.setItem(storageKey,String((turn+1)%4))}catch{}
-  sterling12EmojiTurns.set(key,(turn+1)%4);
-  const apology=/\bprzepraszam\b|\bprzykro mi\b|\bmoja wina\b|\bnie chciałem\b|\bnie chciałam\b|\bpomyliłem się\b|\bpomyliłam się\b/iu.test(String(text||''));
-  const emojis=apology?['😓','😔','😟','😶‍🌫️']:['😎','😀','😁','😆'];
-  const clean=String(text||'').trim().replace(/[ \t]*(?:😎|😀|😁|😆)\s*$/u,'');
-  return clean?clean+' '+emojis[turn%emojis.length]:emojis[turn%emojis.length];
-}
 const orzechEmojiTurns=new Map();
 function orzechEmojiTheme(subject){
   const text=String(subject||'').toLocaleLowerCase('pl').normalize('NFD').replace(/[\u0300-\u036f]/gu,'').replace(/ł/g,'l');
@@ -977,6 +1184,19 @@ function ensureOrzechEmoji(text,modelName,subject=''){
   }
   return value;
 }
+// Rotacja jest zapamiętywana lokalnie, więc różne pytania nie zaczynają stale od 😎.
+function addSterling12Emoji(text,modelName){
+  if(!usesSterling12(modelName))return text;
+  const key=String(modelName).toLocaleLowerCase('pl');
+  const storageKey='madraai-sterling12-emoji:'+key;
+  let turn=sterling12EmojiTurns.get(key)||0;
+  try{const saved=Number(localStorage.getItem(storageKey));if(Number.isInteger(saved)&&saved>=0)turn=saved;localStorage.setItem(storageKey,String((turn+1)%4))}catch{}
+  sterling12EmojiTurns.set(key,(turn+1)%4);
+  const apology=/\bprzepraszam\b|\bprzykro mi\b|\bmoja wina\b|\bnie chciałem\b|\bnie chciałam\b|\bpomyliłem się\b|\bpomyliłam się\b/iu.test(String(text||''));
+  const emojis=apology?['😓','😔','😟','😶‍🌫️']:['😎','😀','😁','😆'];
+  const clean=String(text||'').trim().replace(/[ \t]*(?:😎|😀|😁|😆)\s*$/u,'');
+  return clean?clean+' '+emojis[turn%emojis.length]:emojis[turn%emojis.length];
+}
 const manualEmojiCounts=new Map();
 function addManualPairEmoji(text,question,modelName){
   if(!usesExpandedReplies(modelName)||usesSterling12(modelName))return text;
@@ -988,10 +1208,10 @@ function addManualPairEmoji(text,question,modelName){
 }
 const followupCounts=new Map();
 // Dla Sterling 1.2 zachowujemy niewykorzystane zdania z ostatniego źródła,
-// aby odpowiedź na „tak" mogła rozwinąć temat bez powtarzania wcześniejszej treści.
+// aby odpowiedź na „tak” mogła rozwinąć temat bez powtarzania wcześniejszej treści.
 let pendingMore=null;
-const moreYes=/^(?:tak|także|jasne|pewnie|chętnie|chetnie|poproszę|poprosze|więcej|wiecej|opowiedz więcej|opowiedz wiecej|powiedz więcej|powiedz wiecej|daj więcej|daj wiecej)[.!?… ]*$/iu;
-const moreNo=/^(?:nie|nie dzięki|nie dzieki|nie, dzięki|nie, dzieki|wystarczy|to wszystko|na razie nie|nie trzeba)[.!?… ]*$/iu;
+const moreYes=/^(?:tak(?:[, ]+(?:poproszę|poprosze|chcę|chce|chętnie|chetnie|daj|powiedz|opowiedz|proszę|prosze))*|jasne|pewnie|chętnie|chetnie|poproszę|poprosze|więcej|wiecej|opowiedz(?: mi)? więcej|opowiedz(?: mi)? wiecej|powiedz(?: mi)? więcej|powiedz(?: mi)? wiecej|daj(?: mi)? więcej|daj(?: mi)? wiecej|chcę więcej|chce wiecej)[.!?… ]*$/iu;
+const moreNo=/^(?:nie(?:[, ]+(?:dzięki|dzieki|dziękuję|dziekuje|chcę|chce|nie trzeba|wystarczy))*|nie chcę|nie chce|nie chcę więcej|nie chce wiecej|wystarczy|to wszystko|na razie nie|nie trzeba)[.!?… ]*$/iu;
 const morePrompts=[
   'Chcesz poznać dodatkowe informacje na ten temat? Napisz po prostu tak lub nie.',
   'Czy chcesz usłyszeć o tym coś więcej? Napisz po prostu tak lub nie.',
@@ -1013,9 +1233,15 @@ const noThanks=[
   'Jasne, zostawmy ten temat. Masz inne pytanie?'
 ];
 const noThanksTurns=new Map();
-function isMoreYes(q){return moreYes.test(String(q||'').trim())}
-function isMoreNo(q){return moreNo.test(String(q||'').trim())}
-function isMoreDetailsRequest(q){const text=String(q||'').toLocaleLowerCase('pl').normalize('NFD').replace(/[\u0300-\u036f]/gu,'').replace(/ł/g,'l');const asks=/\b(?:daj|podaj|powiedz|opowiedz|przedstaw|wyjasnij|rozwin|dopowiedz|napisz|mozesz|moglbys|moglabys)\b/u.test(text),details=/\b(?:wiecej|dodatkow\w*|szersz\w*|kolejn\w*|dokladniej)\b/u.test(text);return asks&&details||/\brozwin\w*\s+(?:ten\s+)?temat\b/u.test(text)}
+function normalizeMoreAnswer(q){return String(q||'').toLocaleLowerCase('pl').normalize('NFD').replace(/[\u0300-\u036f]/gu,'').replace(/ł/g,'l').replace(/[.!?…]+/gu,' ').replace(/\s+/gu,' ').trim()}
+function isMoreYes(q){return moreYes.test(String(q||'').trim())||/^(?:tak|jasne|pewnie|chetnie|poprosze|wiecej|opowiedz(?: mi)? wiecej|powiedz(?: mi)? wiecej|daj(?: mi)? wiecej|chce wiecej)(?:\s+(?:poprosze|chce|chetnie))?$/u.test(normalizeMoreAnswer(q))}
+function isMoreNo(q){return moreNo.test(String(q||'').trim())||/^(?:nie|nie dzieki|nie dziekuje|nie chce|nie chce wiecej|wystarczy|to wszystko|na razie nie|nie trzeba)$/u.test(normalizeMoreAnswer(q))}
+function isMoreDetailsRequest(q){
+  const text=String(q||'').toLocaleLowerCase('pl').normalize('NFD').replace(/[\u0300-\u036f]/gu,'').replace(/ł/g,'l');
+  const asks=/\b(?:daj|podaj|powiedz|opowiedz|przedstaw|wyjasnij|rozwin|dopowiedz|napisz|mozesz|moglbys|moglabys|moglibyscie)\b/u.test(text);
+  const requestsDetails=/\b(?:wiecej|dodatkow\w*|szersz\w*|kolejn\w*|dokladniej)\b/u.test(text);
+  return asks&&requestsDetails || /\brozwin\w*\s+(?:ten\s+)?temat\b/u.test(text);
+}
 function endsWithMorePrompt(text){return morePrompts.some(prompt=>String(text||'').trim().endsWith(prompt))}
 function stopAfterNoMoreDetails(text){
   const reply=String(text||'');
@@ -1025,24 +1251,28 @@ function stopAfterNoMoreDetails(text){
   pendingMore=null;
   return reply.slice(0,match.index+match[0].length).trim();
 }
-function answerMore(q,modelName){
+function answerMore(q,modelName=''){
   const explicitOrzechRequest=usesFamilyDiversity(modelName)&&isMoreDetailsRequest(q);
   if(pendingMore&&pendingMore.model!==modelName)pendingMore=null;
   if(!pendingMore)return explicitOrzechRequest?'Nie mam w materiale dalszych informacji na ten temat.':null;
   if(isMoreNo(q)){
+    if(!pendingMore.waitingForChoice)return null;
     const key=pendingMore.model.toLocaleLowerCase('pl');const turn=noThanksTurns.get(key)||0;noThanksTurns.set(key,turn+1);
     pendingMore=null;return noThanks[turn%noThanks.length];
   }
+  if(isMoreYes(q)&&!pendingMore.waitingForChoice&&!explicitOrzechRequest)return null;
   if(!isMoreYes(q)&&!explicitOrzechRequest)return null;
   const batch=pendingMore.remaining.splice(0,2).join(' ').trim();
   if(!pendingMore.remaining.length)pendingMore=null;
   if(!batch)return 'Nie mam już w tym materiale kolejnych szczegółów do dodania.';
   const text=usesFamilyDiversity(modelName)?batch:varyKnowledgeWording12(batch,pendingMore?.model||'Sterling 1.2');
-  return pendingMore?text+' '+morePrompts[(pendingMore.turn++)%morePrompts.length]:text+' Mam nadzieję, że te dodatkowe informacje pomogły.';
+  if(pendingMore){pendingMore.waitingForChoice=true;return text+' '+morePrompts[(pendingMore.turn++)%morePrompts.length]}
+  return text+' Mam nadzieję, że te dodatkowe informacje pomogły.';
 }
-function addNewModelFollowup(answer,question,modelName,fromKnowledge=false){
+function addNewModelFollowup(answer,question,modelName,fromKnowledge=false,hasMoreDetails=false){
   if(!usesExpandedReplies(modelName))return answer;
   if(!fromKnowledge)return answer;
+  if(usesFamilyDiversity(modelName)&&!hasMoreDetails)return answer;
   const q=String(question||'').trim();
   const social=/^(?:hej|hejka|siema|cześć|czesc|elo|witaj|dzięki|dziekuje|dziękuję|dobranoc)[!.?…]*$/iu.test(q);
   const informational=/^(?:co|czym|kto|kim|jak|jaki|jaka|jakie|dlaczego|czemu|gdzie|kiedy|ile|który|która|które)(?:\s|$)/iu.test(q)||
@@ -1051,10 +1281,16 @@ function addNewModelFollowup(answer,question,modelName,fromKnowledge=false){
   const answerWords=String(answer||'').match(/[\p{L}\p{N}]+/gu)||[];
   if(!informational||social||personalChat||answerWords.length<9)return answer;
   if(/[?？]\s*$/u.test(String(answer||'')))return answer;
+  const endings=morePrompts;
   const key=String(modelName)+'|'+q.toLocaleLowerCase('pl');
   const i=followupCounts.get(key)||0;followupCounts.set(key,i+1);
-  return String(answer||'').trim()+' '+morePrompts[i%morePrompts.length];
+  return String(answer||'').trim()+' '+endings[i%endings.length];
 }
+
+
+function addWeakAnswerWarning(bubble){const button=document.createElement('button');button.type='button';button.className='warningInfoButton';button.title='Pokaż ostrzeżenie o odpowiedzi';button.setAttribute('aria-label','Pokaż ostrzeżenie o odpowiedzi');const dialog=document.createElement('dialog');dialog.className='answerWarningDialog';dialog.setAttribute('aria-label','Ostrzeżenie o odpowiedzi');const text=document.createElement('p');text.textContent='Temat, o który pytasz, nie został jeszcze dobrze wytrenowany w tym modelu. Ta odpowiedź może być niepoprawna.';const close=document.createElement('button');close.type='button';close.textContent='Rozumiem';close.addEventListener('click',()=>dialog.close());dialog.append(text,close);dialog.addEventListener('click',event=>{if(event.target===dialog)dialog.close()});dialog.addEventListener('close',()=>dialog.remove(),{once:true});button.addEventListener('click',()=>{if(!dialog.isConnected)document.body.append(dialog);dialog.showModal()});bubble.append(document.createTextNode(' '),button)}function addToolUsageNotice(bubble){const button=document.createElement('button');button.type='button';button.className='toolUsageButton';button.title='Pokaż informację o użyciu narzędzia';button.setAttribute('aria-label','Pokaż informację o użyciu narzędzia');button.innerHTML='<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a7 7 0 0 0-4 12.7c.8.6 1.3 1.4 1.4 2.3h5.2c.1-.9.6-1.7 1.4-2.3A7 7 0 0 0 12 3Z"/><path d="M9 18h6M10 21h4"/></svg>';const dialog=document.createElement('dialog');dialog.className='toolUsageDialog';dialog.setAttribute('aria-label','Informacja o użyciu narzędzia');const text=document.createElement('p');text.textContent='Przy tej wiadomości model musiał dokładniej przeanalizować treść i skorzystał ze specjalnego narzędzia, które rozszerza jego możliwości.';const close=document.createElement('button');close.type='button';close.textContent='Rozumiem';close.addEventListener('click',()=>dialog.close());dialog.append(text,close);dialog.addEventListener('click',event=>{if(event.target===dialog)dialog.close()});dialog.addEventListener('close',()=>dialog.remove(),{once:true});button.addEventListener('click',()=>{if(!dialog.isConnected)document.body.append(dialog);dialog.showModal()});bubble.append(document.createTextNode(' '),button)}
+const nextFrame=()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
+
 const modelIdentityTurns=new Map();
 function isModelIdentityQuestion(question){
   const text=String(question||'').toLocaleLowerCase('pl').normalize('NFD')
@@ -1070,80 +1306,106 @@ function isModelIdentityQuestion(question){
     /\b(jak sie nazywa|z czego korzystasz|z jakiego modelu korzystasz)\b/u.test(text)||
     /\b(twoj|twoja)\s+(model|wersja)\b/u.test(text);
 }
-function modelIdentityReply(modelName,question,analysis){
+function modelIdentityReply(modelName){
   const name=String(modelName||'wybranym modelem').replace(/\.mai$/i,'').trim();
-  const text=String(question||'').toLocaleLowerCase('pl').normalize('NFD').replace(/[\u0300-\u036f]/g,'');
   const key=name.toLocaleLowerCase('pl');
-  // Wybierz informację według tego, co użytkownik rzeczywiście dopytuje.
-  if(/\b(gdzie|jak)\b/.test(text)&&/\b(zmien|wybr|ustaw|przelacz)/.test(text))
-    return `Obecnie korzystasz z modelu ${name}. Inny model wybierzesz przy polu wiadomości na dole ekranu.`;
-  if(/\b(wersj|edycj|numer)\w*/.test(text))
-    return `To model ${name}. Jego nazwę i wersję znajdziesz też w przycisku wyboru modelu.`;
   const choices=[
     `Obecnie korzystasz z modelu ${name}. Model możesz zmienić na dole ekranu.`,
-    `Teraz rozmawiasz z modelem ${name}. Inny wybierzesz przy polu wiadomości.`,
-    `Wybrany model to ${name}. Zmienisz go w przycisku obok pola wpisywania.`
+    `Teraz rozmawiasz z modelem ${name}. Inny wybierzesz na dole ekranu.`,
+    `Wybrany model to ${name}. Zmienisz go przy polu wpisywania wiadomości.`
   ];
-  // Drobna zmienność nie powinna maskować wyniku analizy danych modelu.
   const turn=modelIdentityTurns.get(key)||0;modelIdentityTurns.set(key,turn+1);
-  const hasKnownMatch=Number.isInteger(analysis?.index)&&analysis.index>=0;
-  const offset=hasKnownMatch?1:0;
-  return choices[(turn+offset)%choices.length];
+  return choices[turn%choices.length];
 }
 
-function addWeakAnswerWarning(bubble){const button=document.createElement('button');button.type='button';button.className='warningInfoButton';button.title='Pokaż ostrzeżenie o odpowiedzi';button.setAttribute('aria-label','Pokaż ostrzeżenie o odpowiedzi');const dialog=document.createElement('dialog');dialog.className='answerWarningDialog';dialog.setAttribute('aria-label','Ostrzeżenie o odpowiedzi');const text=document.createElement('p');text.textContent='Temat, o który pytasz, nie został jeszcze dobrze wytrenowany w tym modelu. Ta odpowiedź może być niepoprawna.';const close=document.createElement('button');close.type='button';close.textContent='Rozumiem';close.addEventListener('click',()=>dialog.close());dialog.append(text,close);dialog.addEventListener('click',event=>{if(event.target===dialog)dialog.close()});dialog.addEventListener('close',()=>dialog.remove(),{once:true});button.addEventListener('click',()=>{if(!dialog.isConnected)document.body.append(dialog);dialog.showModal()});bubble.append(document.createTextNode(' '),button)}function addToolUsageNotice(bubble){const button=document.createElement('button');button.type='button';button.className='toolUsageButton';button.title='Pokaż informację o użyciu narzędzia';button.setAttribute('aria-label','Pokaż informację o użyciu narzędzia');button.innerHTML='<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a7 7 0 0 0-4 12.7c.8.6 1.3 1.4 1.4 2.3h5.2c.1-.9.6-1.7 1.4-2.3A7 7 0 0 0 12 3Z"/><path d="M9 18h6M10 21h4"/></svg>';const dialog=document.createElement('dialog');dialog.className='toolUsageDialog';dialog.setAttribute('aria-label','Informacja o użyciu narzędzia');const text=document.createElement('p');text.textContent='Przy tej wiadomości model musiał dokładniej przeanalizować treść i skorzystał ze specjalnego narzędzia, które rozszerza jego możliwości.';const close=document.createElement('button');close.type='button';close.textContent='Rozumiem';close.addEventListener('click',()=>dialog.close());dialog.append(text,close);dialog.addEventListener('click',event=>{if(event.target===dialog)dialog.close()});dialog.addEventListener('close',()=>dialog.remove(),{once:true});button.addEventListener('click',()=>{if(!dialog.isConnected)document.body.append(dialog);dialog.showModal()});bubble.append(document.createTextNode(' '),button)}
-const nextFrame=()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
-/* Obsługuje wysłanie pytania: wybiera model, szuka odpowiedzi, pokazuje ostrzeżenie i przewija czat. */function isOrzech21Selected(){return /^Orzech\s+2\.1(?:\.mai)?$/iu.test(String(models[+$('#models').value]?.name||'').trim())}function handleJebEgg(q){if(!isOrzech21Selected()||String(q).trim().toLocaleLowerCase('pl')!=='/jeb')return false;$('#input').value='';add(q,'user');document.body.classList.toggle('jebInverted');add('😵‍💫','bot');return true}function handleFnfEgg(q){if(!isOrzech21Selected()||!window.MadraFnF?.matchesRequest(q))return false;showChat();$('#input').value='';add(q,'user');window.MadraFnF.mount(document.querySelector('#chat'));return true}async function send(){
+function isOrzech21Selected(){return /^Orzech\s+2\.1(?:\.mai)?$/iu.test(String(models[+$('#models').value]?.name||'').trim())}function handleJebEgg(q){if(!isOrzech21Selected()||String(q).trim().toLocaleLowerCase('pl')!=='/jeb')return false;$('#input').value='';add(q,'user');document.body.classList.toggle('jebInverted');add('😵‍💫','bot');return true}function handleFnfEgg(q){if(!isOrzech21Selected()||!window.MadraFnF?.matchesRequest(q))return false;showChat();$('#input').value='';add(q,'user');window.MadraFnF.mount(document.querySelector('#chat'));return true}
+async function send(){
   if(sending)return;
   const q=$('#input').value.replace(/\s+/gu,' ').trim();if(!q)return;if(handleJebEgg(q))return;if(handleFnfEgg(q))return;
   sending=true;$('#send').disabled=true;$('#input').value='';
   add(q,'user');if(window.MadraStats)window.MadraStats.trackQuestion();else(window.MadraStatsQueue??=[]).push('question');
   const model=models[Number($('#models').value)];
   const{content,bubble,copyButton,time}=add('','bot',model?.name),progress=showThinking(content);
-  let warning=false;
+  const thinkingStarted=Date.now();
+  const ui=text=>window.MadraAISettings?.uiText?.(text)||text;
+  let warning=false,queryForModel=q,conversationForReply=[],orzechUserSaved=false,result=null;
   try{
     await nextFrame();
-    if(!model)throw Error(window.MadraAISettings?.uiText('Nie udało się wczytać wybranego modelu.')||'Nie udało się wczytać wybranego modelu.');
+    if(!model)throw Error(ui('Nie udało się wczytać wybranego modelu.'));
     const language=window.MadraAISettings?.locale||'pl';
-    const modelQuestion=language==='en'?await window.MadraAISettings.translateText(q,'en','pl',value=>progress(Math.round(value*.3))):q;
+    const englishInput=language==='en';
+    conversationForReply=conversation.slice();
+    // Orzech 2.x od razu zapisuje pytanie, by rozmowa przetrwała odświeżenie strony.
+    if(usesFamilyDiversity(model.name)){
+      conversation.push({role:'user',text:q,displayText:q,at:Date.now()});
+      conversation=conversation.slice(-40);orzechUserSaved=true;saveOrzechMemory(model.name);
+    }
+    const englishGreeting=englishInput&&isOrzechModel(model.name)&&/^(?:hello|hi|hey|hi there|hey there|hello there)[!?.,]*$/iu.test(q);
+    if(englishGreeting)queryForModel='hej';
+    else if(englishInput)queryForModel=await window.MadraAISettings.translateText(q,'en','pl',value=>progress(Math.round(value*.3)));
     const pairs=[...(model.pairs||[]),...(model.memory||[]).map(item=>({...item,rating:item.rating||2,memory:true}))];
-    let result,reply=usesFamilyDiversity(model.name)||usesSterling12(model.name)?answerMore(modelQuestion,model.name):null,emojiDone=false;
+    // Gdy tłumaczenie pasuje do pytania z treningu, użyj dokładnie jego brzmienia
+    // (np. „goodnight” -> zapisane w modelu „Dobranoc”).
+    if(englishInput&&isOrzechModel(model.name)&&!englishGreeting){
+      const trainedMatch=MadraAI.rank(queryForModel,pairs,true)[0];
+      if(trainedMatch&&trainedMatch.s>=.8&&trainedMatch.coverage>=.75&&typeof trainedMatch.p?.q==='string')queryForModel=trainedMatch.p.q;
+    }
+    if(orzechUserSaved){conversation[conversation.length-1].text=queryForModel;saveOrzechMemory(model.name)}
+    let reply=isOrzechModel(model.name)||usesSterling12(model.name)?answerMore(queryForModel,model.name):null,emojiDone=false;
     if(reply){result={text:reply,warning:false,index:-1};if(pendingMore)pendingMore.model=model.name;}
-    else{
-      result=await MadraAI.prepare(modelQuestion,pairs,model.knowledge||[],progress,conversation,{expandedKnowledge:usesExpandedReplies(model.name),sterling12:usesSterling12(model.name),familyDiversity:usesFamilyDiversity(model.name)});
-      if(isModelIdentityQuestion(modelQuestion)){
-        pendingMore=null;reply=modelIdentityReply(model.name,modelQuestion,result);result={...result,text:reply,warning:false,index:-1,source:null};
-      }else{
-        warning=!!result.warning;
-        reply=warning&&result.index<0&&!result.source?MadraAI.forceReply(modelQuestion,pairs,model.knowledge||[],conversation,{sterling12:usesSterling12(model.name)}):(result.text||MadraLanguage.composeFallback(modelQuestion,conversation));
-        if(usesSterling12(model.name)&&result.source)reply=varyKnowledgeWording12(reply,model.name);
-        if(usesSterling12(model.name)){reply=addSterling12Emoji(reply,model.name);emojiDone=true;}
-        reply=addNewModelFollowup(reply,modelQuestion,model.name,result.index<0&&!!result.source);
-        if(usesFamilyDiversity(model.name))pendingMore=result.source&&Array.isArray(result.remaining)&&result.remaining.length?{remaining:result.remaining.slice(),model:model.name,turn:0}:null;
-        else if(usesSterling12(model.name))pendingMore=endsWithMorePrompt(reply)?{remaining:Array.isArray(result.remaining)&&result.remaining.length?result.remaining.slice():[],model:model.name,turn:0}:null;
-        if(usesSterling12(model.name))reply=reply.replace(/^W skrócie:\s*/iu,'');
-      }
+    else if(isModelIdentityQuestion(queryForModel)){
+      pendingMore=null;reply=modelIdentityReply(model.name);result={text:reply,warning:false,index:-1};
+    }else{
+      result=await MadraAI.prepare(queryForModel,pairs,model.knowledge||[],progress,conversationForReply,{expandedKnowledge:usesExpandedReplies(model.name),sterling12:usesSterling12(model.name),familyDiversity:usesFamilyDiversity(model.name)});
+      warning=!!result.warning;
+      reply=warning&&result.index<0&&!result.source?MadraAI.forceReply(queryForModel,pairs,model.knowledge||[],conversationForReply,{sterling12:usesSterling12(model.name)}):(result.text||MadraLanguage.composeFallback(queryForModel,conversationForReply));
+      if(usesSterling12(model.name)&&result.source)reply=varyKnowledgeWording12(reply,model.name);
+      // Emoji dokładamy PRZED pytaniem końcowym, żeby nie lądowało za znakiem zapytania.
+      if(usesSterling12(model.name)){reply=addSterling12Emoji(reply,model.name);emojiDone=true;}
+      reply=addNewModelFollowup(reply,queryForModel,model.name,result.index<0&&!!result.source,Array.isArray(result.remaining)&&result.remaining.length>0);
+      if(isOrzechModel(model.name)){
+        const remaining=Array.isArray(result.remaining)?result.remaining.slice():[];
+        pendingMore=result.source&&(remaining.length||endsWithMorePrompt(reply))?{remaining,model:model.name,turn:0,waitingForChoice:endsWithMorePrompt(reply)}:null;
+      }else if(usesSterling12(model.name))pendingMore=endsWithMorePrompt(reply)?{remaining:Array.isArray(result.remaining)&&result.remaining.length?result.remaining.slice():[],model:model.name,turn:0}:null;
+      if(usesSterling12(model.name))reply=reply.replace(/^W skrócie:\s*/iu,'');
     }
     if(usesSterling12(model.name))reply=stopAfterNoMoreDetails(reply);
+    savePendingMore(model.name);
     if(usesExpandedReplies(model.name))reply=reply.replace(/[—–―]/gu,'-');
-    if(result.index>=0&&result.index<(model.pairs||[]).length)reply=addManualPairEmoji(reply,modelQuestion,model.name);
+    if(result.index>=0&&result.index<(model.pairs||[]).length)reply=addManualPairEmoji(reply,queryForModel,model.name);
     if(!emojiDone)reply=addSterling12Emoji(reply,model.name);
-    if(usesFamilyDiversity(model.name))reply=MadraAI.varyOrzechReply(reply);
-    const modelReply=reply;
-    if(language==='en')reply=await window.MadraAISettings.translateText(modelReply,'pl','en',value=>progress(70+Math.round(value*.28)));
-    if(usesFamilyDiversity(model.name))reply=ensureOrzechEmoji(reply,model.name,q+' '+modelReply);
+    if(usesFamilyDiversity(model.name)){
+      reply=MadraAI.varyOrzechReply(reply);
+      const wait=Math.max(0,650-(Date.now()-thinkingStarted));
+      if(wait){progress(88);await new Promise(resolve=>setTimeout(resolve,wait))}
+    }
+    const polishReply=reply;
+    if(language==='en')reply=await window.MadraAISettings.translateText(polishReply,'pl','en',value=>progress(70+Math.round(value*.28)));
+    if(isOrzechModel(model.name))reply=ensureOrzechEmoji(reply,model.name,q+' '+polishReply);
     bubble.textContent=reply;
-    if(usesFamilyDiversity(model.name)){let saved=[];try{saved=JSON.parse(localStorage.getItem('madraai-public-orzech-memory')||'[]')}catch{}saved.push({role:'user',text:modelQuestion,displayText:q},{role:'assistant',text:modelReply,displayText:reply});saved=saved.slice(-40);try{localStorage.setItem('madraai-public-orzech-memory',JSON.stringify(saved))}catch{}}
-    conversation.push({role:'user',text:modelQuestion},{role:'assistant',text:modelReply});conversation=conversation.slice(-12);
+    const assistantTurn={role:'assistant',text:polishReply,displayText:reply,question:q,warning:!!warning,toolUsed:result?.toolUsed||'',at:Date.now()};
+    if(usesFamilyDiversity(model.name)){
+      conversation.push(assistantTurn);conversation=conversation.slice(-40);saveOrzechMemory(model.name);
+    }else{
+      conversation.push({role:'user',text:queryForModel,displayText:q,at:assistantTurn.at},assistantTurn);
+      conversation=conversation.slice(-12);volatileConversations.set(model.name,conversation);
+    }
     if(warning)addWeakAnswerWarning(bubble);if(result?.toolUsed)addToolUsageNotice(bubble);progress(100);
   }catch(error){
-    bubble.textContent=error?.message||window.MadraAISettings?.uiText('Nie udało się przygotować odpowiedzi.')||'Nie udało się przygotować odpowiedzi.';
-    const notice=document.createElement('div');notice.className='warn';notice.textContent=window.MadraAISettings?.uiText('Model miał problem z tą wiadomością. Odpowiedź może być niepoprawna.')||'Model miał problem z tą wiadomością. Odpowiedź może być niepoprawna.';content.append(notice);progress(100);
+    const message=error?.message||ui('Nie udało się przygotować odpowiedzi.');
+    bubble.textContent=message;
+    const notice=document.createElement('div');notice.className='warn';notice.textContent=ui('Model miał problem z tą wiadomością. Odpowiedź może być niepoprawna.');content.append(notice);progress(100);
+    if(model&&usesFamilyDiversity(model.name)){
+      if(!orzechUserSaved)conversation.push({role:'user',text:queryForModel,displayText:q,at:Date.now()});
+      conversation.push({role:'assistant',text:message,displayText:message,question:q,warning:true,at:Date.now()});
+      conversation=conversation.slice(-40);saveOrzechMemory(model.name);
+    }
   }finally{
     content.querySelector('.thinking')?.remove();time.dateTime=new Date().toISOString();time.textContent=new Intl.DateTimeFormat(window.MadraAISettings?.locale==='en'?'en-US':'pl-PL',{hour:'2-digit',minute:'2-digit'}).format(new Date());
     if(copyButton)copyButton.hidden=!bubble.textContent.trim();scroll();sending=false;$('#send').disabled=false;$('#input').focus();
   }
-}function bindModal(id,button){const modal=$('#'+id);button.onclick=()=>{modal.classList.add('show');modal.setAttribute('aria-hidden','false')};modal.addEventListener('click',e=>{if(e.target===modal||e.target.closest('[data-close]')){modal.classList.remove('show');modal.setAttribute('aria-hidden','true')}})}bindModal('aboutModal', $('#aboutHelp'));bindModal('themesModal', $('#openThemes'));$('#navSettings').addEventListener('click',showSettings);/* Ustawia wygląd strony i zapamiętuje wybrany motyw w localStorage tej przeglądarki. */function applyTheme(theme,persist=true){const value=['light','dongus','nocturne'].includes(theme)?theme:'dark';document.body.classList.toggle('themeLight',value==='light');document.body.classList.toggle('themeDongus',value==='dongus');document.body.classList.toggle('themeNocturne',value==='nocturne');const names={dark:'Ciemny',light:'Jasny',dongus:'Dongus',nocturne:'Nowy'};const label=$('#themeOpenLabel');if(label)label.textContent=names[value];const swatch=$('#themeOpenSwatch');if(swatch)swatch.className='themeSwatch '+(value==='dongus'?'dongusSwatch':value==='light'?'lightSwatch':value==='nocturne'?'nocturneSwatch':'darkSwatch');document.querySelectorAll('[data-theme-choice]').forEach(button=>{const selected=button.dataset.themeChoice===value;button.classList.toggle('selected',selected);button.setAttribute('aria-pressed',selected?'true':'false')});if(persist){try{localStorage.setItem('madraAI-theme',value)}catch{}}}let savedTheme='dark';try{savedTheme=localStorage.getItem('madraAI-theme')||'dark'}catch{}applyTheme(savedTheme,false);/* Zapisuje wybór rozmiaru czatu lokalnie; średni odpowiada dotychczasowemu wyglądowi. */function applyChatSize(size,persist=true){const value=['far','medium','near'].includes(size)?size:'medium';document.body.classList.remove('chatSizeFar','chatSizeMedium','chatSizeNear');document.body.classList.add(value==='far'?'chatSizeFar':value==='near'?'chatSizeNear':'chatSizeMedium');document.querySelectorAll('[data-chat-size]').forEach(button=>{const selected=button.dataset.chatSize===value;button.classList.toggle('selected',selected);button.setAttribute('aria-pressed',selected?'true':'false')});if(persist){try{localStorage.setItem('madraAI-chat-size',value)}catch{}}}let savedChatSize='medium';try{savedChatSize=localStorage.getItem('madraAI-chat-size')||'medium'}catch{}applyChatSize(savedChatSize,false);document.querySelectorAll('[data-chat-size]').forEach(button=>button.addEventListener('click',()=>applyChatSize(button.dataset.chatSize)));/* Ustawia domyślnie Rubik Medium; poprzednia czcionka może być wybrana ręcznie. */function applyFont(choice,persist=true){const value=choice==='old'?'old':'rubik';document.body.classList.toggle('useOldFont',value==='old');document.querySelectorAll('[data-font-choice]').forEach(button=>{const selected=button.dataset.fontChoice===value;button.classList.toggle('selected',selected);button.setAttribute('aria-pressed',selected?'true':'false')});if(persist){try{localStorage.setItem('madraAI-font',value)}catch{}}}let savedFont='rubik';try{savedFont=localStorage.getItem('madraAI-font')||'rubik'}catch{}applyFont(savedFont,false);document.querySelectorAll('[data-font-choice]').forEach(button=>button.addEventListener('click',()=>applyFont(button.dataset.fontChoice)));$('#themesModal').addEventListener('click',e=>{const choice=e.target.closest('[data-theme-choice]');if(choice){applyTheme(choice.dataset.themeChoice);$('#themesModal').classList.remove('show');$('#themesModal').setAttribute('aria-hidden','true')}});document.addEventListener('keydown',e=>{if(e.key==='Escape')document.querySelectorAll('.modal.show').forEach(m=>{m.classList.remove('show');m.setAttribute('aria-hidden','true')})});$('#send').onclick=send;$('#input').onkeydown=e=>{if(e.key==='Enter'&&!e.shiftKey&&!e.isComposing&&!e.repeat){e.preventDefault();send()}};$('#input').addEventListener('input',()=>{const ta=$('#input');if(ta.value.includes('\n')){ta.value=ta.value.replace(/\n/g,'');send()}});load();/* Oznacza aktualną zakładkę jako aktywną w bocznym menu. */function syncNavigation(page){const home=$('#navHome'),chat=$('#navChat'),ann=$('#navAnnouncements'),settings=$('#navSettings');home.classList.toggle('active',page==='home');chat.classList.toggle('active',page==='chat');ann.classList.toggle('active',page==='announcements');settings.classList.toggle('active',page==='settings');home.setAttribute('aria-current',page==='home'?'page':'false');chat.setAttribute('aria-current',page==='chat'?'page':'false');ann.setAttribute('aria-current',page==='announcements'?'page':'false');settings.setAttribute('aria-current',page==='settings'?'page':'false')}
+}
+function bindModal(id,button){const modal=$('#'+id);button.onclick=()=>{modal.classList.add('show');modal.setAttribute('aria-hidden','false')};modal.addEventListener('click',e=>{if(e.target===modal||e.target.closest('[data-close]')){modal.classList.remove('show');modal.setAttribute('aria-hidden','true')}})}bindModal('aboutModal', $('#aboutHelp'));bindModal('themesModal', $('#openThemes'));$('#navSettings').addEventListener('click',showSettings);/* Ustawia wygląd strony i zapamiętuje wybrany motyw w localStorage tej przeglądarki. */function applyTheme(theme,persist=true){const value=['light','dongus','nocturne'].includes(theme)?theme:'dark';document.body.classList.toggle('themeLight',value==='light');document.body.classList.toggle('themeDongus',value==='dongus');document.body.classList.toggle('themeNocturne',value==='nocturne');const names={dark:'Ciemny',light:'Jasny',dongus:'Dongus',nocturne:'Nowy'};const label=$('#themeOpenLabel');if(label)label.textContent=names[value];const swatch=$('#themeOpenSwatch');if(swatch)swatch.className='themeSwatch '+(value==='dongus'?'dongusSwatch':value==='light'?'lightSwatch':value==='nocturne'?'nocturneSwatch':'darkSwatch');document.querySelectorAll('[data-theme-choice]').forEach(button=>{const selected=button.dataset.themeChoice===value;button.classList.toggle('selected',selected);button.setAttribute('aria-pressed',selected?'true':'false')});if(persist){try{localStorage.setItem('madraAI-theme',value)}catch{}}}let savedTheme='dark';try{savedTheme=localStorage.getItem('madraAI-theme')||'dark'}catch{}applyTheme(savedTheme,false);/* Zapisuje wybór rozmiaru czatu lokalnie; średni odpowiada dotychczasowemu wyglądowi. */function applyChatSize(size,persist=true){const value=['far','medium','near'].includes(size)?size:'medium';document.body.classList.remove('chatSizeFar','chatSizeMedium','chatSizeNear');document.body.classList.add(value==='far'?'chatSizeFar':value==='near'?'chatSizeNear':'chatSizeMedium');document.querySelectorAll('[data-chat-size]').forEach(button=>{const selected=button.dataset.chatSize===value;button.classList.toggle('selected',selected);button.setAttribute('aria-pressed',selected?'true':'false')});if(persist){try{localStorage.setItem('madraAI-chat-size',value)}catch{}}}let savedChatSize='medium';try{savedChatSize=localStorage.getItem('madraAI-chat-size')||'medium'}catch{}applyChatSize(savedChatSize,false);document.querySelectorAll('[data-chat-size]').forEach(button=>button.addEventListener('click',()=>applyChatSize(button.dataset.chatSize)));/* Ustawia domyślnie Rubik Medium; poprzednia czcionka może być wybrana ręcznie. */function applyFont(choice,persist=true){const value=choice==='old'?'old':'rubik';document.body.classList.toggle('useOldFont',value==='old');document.querySelectorAll('[data-font-choice]').forEach(button=>{const selected=button.dataset.fontChoice===value;button.classList.toggle('selected',selected);button.setAttribute('aria-pressed',selected?'true':'false')});if(persist){try{localStorage.setItem('madraAI-font',value)}catch{}}}let savedFont='rubik';try{savedFont=localStorage.getItem('madraAI-font')||'rubik'}catch{}applyFont(savedFont,false);document.querySelectorAll('[data-font-choice]').forEach(button=>button.addEventListener('click',()=>applyFont(button.dataset.fontChoice)));$('#themesModal').addEventListener('click',e=>{const choice=e.target.closest('[data-theme-choice]');if(choice){applyTheme(choice.dataset.themeChoice);$('#themesModal').classList.remove('show');$('#themesModal').setAttribute('aria-hidden','true')}});document.addEventListener('keydown',e=>{if(e.key==='Escape')document.querySelectorAll('.modal.show').forEach(m=>{m.classList.remove('show');m.setAttribute('aria-hidden','true')})});$('#send').onclick=send;$('#input').onkeydown=e=>{if(e.key==='Enter'&&!e.shiftKey&&!e.isComposing&&!e.repeat){e.preventDefault();send()}};$('#input').addEventListener('input',()=>{const ta=$('#input');if(ta.value.includes('\n')){ta.value=ta.value.replace(/\n/g,'');send()}});load();/* Oznacza aktualną zakładkę jako aktywną w bocznym menu. */function syncNavigation(page){const home=$('#navHome'),chat=$('#navChat'),ann=$('#navAnnouncements'),settings=$('#navSettings');home.classList.toggle('active',page==='home');chat.classList.toggle('active',page==='chat');ann.classList.toggle('active',page==='announcements');settings.classList.toggle('active',page==='settings');home.setAttribute('aria-current',page==='home'?'page':'false');chat.setAttribute('aria-current',page==='chat'?'page':'false');ann.setAttribute('aria-current',page==='announcements'?'page':'false');settings.setAttribute('aria-current',page==='settings'?'page':'false')}
 /* Przełącza widok na stronę główną. */function showHome(){document.body.classList.add('home');document.body.classList.remove('chatMode','settingsMode','announcementsMode');syncNavigation('home')}
 /* Przełącza widok na rozmowę. */function showChat(){document.body.classList.remove('home','settingsMode','announcementsMode');document.body.classList.add('chatMode');syncNavigation('chat')}
 /* Otwiera zakładkę ogłoszeń. */function showAnnouncements(){document.body.classList.remove('home','chatMode','settingsMode');document.body.classList.add('announcementsMode');syncNavigation('announcements')}
