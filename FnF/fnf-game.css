@@ -14,6 +14,7 @@
 .app.fnfGameReturning .compose{animation:fnfComposeUp .46s cubic-bezier(.16,.75,.25,1) both}
 @keyframes fnfComposeDown{to{opacity:0;transform:translateY(120%)}}
 @keyframes fnfComposeUp{from{opacity:0;transform:translateY(120%)}to{opacity:1;transform:translateY(0)}}
+body.fnfGameLocked .top,body.fnfGameLocked .compose,body.fnfGameLocked .sideNav,body.fnfGameLocked .homePage{pointer-events:none!important;user-select:none!important}
 
 .fnfGameInline{position:absolute;inset:0;z-index:2;min-height:0;color:#f7f7fb;font-family:Rubik,system-ui,sans-serif;visibility:hidden}
 .fnfGameInline.fnfGameReady{visibility:visible;animation:fnfGameEnter .46s cubic-bezier(.16,.75,.25,1) both}
