@@ -50,6 +50,19 @@
       return [name, image];
     }));
 
+    document.body.classList.add('fnfGameLocked');
+    container.classList.add('fnfChatActive');
+    app?.classList.add('fnfGamePlaying');
+    chatRows.forEach(row => {
+      row.classList.add('fnfChatLeaving', row.classList.contains('user') ? 'fnfLeaveRight' : 'fnfLeaveLeft');
+      const direction = row.classList.contains('user') ? 1 : -1;
+      row.animate([
+        { opacity: 1, transform: 'translateX(0)' },
+        { opacity: 0, transform: `translateX(${direction * 110}vw)` }
+      ], { duration: 460, easing: 'cubic-bezier(.6,0,.9,.4)', fill: 'forwards' })
+        .finished.then(() => { if (overlay.isConnected) row.hidden = true; }).catch(() => {});
+    });
+
     let audioCtx = null;
     let instBuffer = null;
     let voicesBuffer = null;
@@ -233,8 +246,10 @@
       stopAudio();
       window.removeEventListener('keydown', onKeyDown);
       app?.classList.remove('fnfGamePlaying', 'fnfGameReturning');
+      document.body.classList.remove('fnfGameLocked');
       container.classList.remove('fnfChatActive');
       container.querySelectorAll('.fnfChatLeaving,.fnfChatReturning').forEach(row => {
+        row.getAnimations().forEach(animation => animation.cancel());
         row.hidden = false;
         row.classList.remove('fnfChatLeaving', 'fnfLeaveRight', 'fnfLeaveLeft', 'fnfChatReturning', 'fnfReturnRight', 'fnfReturnLeft');
       });
@@ -269,12 +284,14 @@
         app?.classList.remove('fnfGamePlaying');
         app?.classList.add('fnfGameReturning');
         chatRows.forEach(row => {
+          row.getAnimations().forEach(animation => animation.cancel());
           row.hidden = false;
           row.classList.remove('fnfChatLeaving', 'fnfLeaveRight', 'fnfLeaveLeft');
           row.classList.add('fnfChatReturning', row.classList.contains('user') ? 'fnfReturnRight' : 'fnfReturnLeft');
         });
         setTimeout(() => {
           app?.classList.remove('fnfGameReturning');
+          document.body.classList.remove('fnfGameLocked');
           container.classList.remove('fnfChatActive');
           chatRows.forEach(row => row.classList.remove('fnfChatReturning', 'fnfReturnRight', 'fnfReturnLeft'));
           showResult();
@@ -387,13 +404,6 @@
         voicesSource.buffer = voicesBuffer;
         voicesSource.connect(audioCtx.destination);
 
-        container.classList.add('fnfChatActive');
-        app?.classList.add('fnfGamePlaying');
-        chatRows.forEach(row => {
-          row.classList.add('fnfChatLeaving', row.classList.contains('user') ? 'fnfLeaveRight' : 'fnfLeaveLeft');
-          row.addEventListener('animationend', () => { row.hidden = true; }, { once: true });
-        });
-        await new Promise(resolve => setTimeout(resolve, 460));
         if (!overlay.isConnected) return;
 
         // Start the visual intro only after every sprite and both audio tracks are ready.
@@ -470,6 +480,17 @@
 
     return { close: dispose };
   }
+
+  document.addEventListener('click', event => {
+    if (!document.body.classList.contains('fnfGameLocked') || event.target?.closest?.('.fnfGameInline')) return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+  }, true);
+  document.addEventListener('keydown', event => {
+    if (!document.body.classList.contains('fnfGameLocked') || KEY_LANES.has(event.key) || event.key === 'Escape') return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+  }, true);
 
   window.MadraFnF = { matchesRequest, mount };
 })();
