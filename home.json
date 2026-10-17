@@ -1,6 +1,12 @@
 {
   "posts": [
     {
+      "title": "Orzech 2.1 już wyszedł!",
+      "text": "Orzech 2.1 właśnie został opublikowany, lecz tym razem zamiast skupić się na trenowaniu AI dodaliśmy kilka eastereggów! Zaproś MądraAI do wspólnego zagrania w Friday Night Funkin' pytając, czy chce zagrać w FNFa lub napisz do niej /jeb, /rainbow lub /break. Tak jak zawsze, nowy model dostał kilka poprawek dotyczących myślenia i odpowiadania, lecz tym razem skupiliśmy się głównie na tych ukrytych mechanikach. Wypróbuj MądraAI Orzech 2.1 już dziś!",
+      "date": "17 października 2026",
+      "important": true
+    },
+    {
       "title": "Orzech 2.0 oficjalnie wydany!",
       "text": "Orzech 2.0 jest już dostępny w publicznej wersji MądraAI. To ukończony model z linii Orzech, który łączy uporządkowaną bazę wiedzy z lepszym dopasowywaniem pytań i prowadzeniem rozmowy.\n\nCo nowego:\n• 1608 wpisów wiedzy oraz 121 przykładów pytań i odpowiedzi.\n• Lepsze rozpoznawanie sensu pytania i jego podobnych sformułowań.\n• Bardziej naturalne, zróżnicowane odpowiedzi układane na podstawie zapisanej wiedzy.\n• Pamiętanie przebiegu rozmowy, by krótkie pytania mogły nawiązywać do wcześniejszego tematu.\n• Wbudowane obliczenia: działania, kolejność operacji, procenty, pierwiastki i zapis słowny.\n• Obsługa angielskiego: pytanie jest tłumaczone dla modelu, a odpowiedź wraca po angielsku.\n• Emoji dobierane do tematu odpowiedzi.\n\nWybierz Orzech 2.0 w selektorze modeli na dole ekranu i rozpocznij rozmowę.",
       "date": "16 października 2026",
