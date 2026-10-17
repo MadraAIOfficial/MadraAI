@@ -1655,7 +1655,7 @@ const OFFICIAL_PARTNERS=['PopSlopTV','Obsługa Ludności','Moi Kakauchiye Marvin
 /* Tworzy kafelki partnerów z ich logotypami i nazwami. */function renderPartners(){const list=$('#partnersList');list.replaceChildren();for(const name of OFFICIAL_PARTNERS){const card=document.createElement('div');card.className='partner';const img=document.createElement('img');img.alt='';img.setAttribute('aria-hidden','true');loadPartnerLogo(img,name);const label=document.createElement('span');label.className='partnerName';label.textContent=name;card.append(img,label);list.append(card)}}renderPartners();
 
 const discordImg=$('#discordIcon');const discordExts=['png','PNG','webp','WEBP','jpg','JPG'];let discordExtIndex=0;discordImg.onerror=()=>{if(discordExtIndex>=discordExts.length){discordImg.hidden=true;return}discordImg.src='Vectors/Discord%20Logo.'+discordExts[discordExtIndex++]};if(discordImg.complete&&!discordImg.naturalWidth)discordImg.src='Vectors/Discord%20Logo.png';
-</script><script src="language-settings.js"></script><script src="notice.js"></script><script src="stats.js" defer></script><script src="FnF/fnf-game.js?v=20261017-9"></script><script>
+</script><script src="language-settings.js"></script><script src="notice.js"></script><script src="stats.js" defer></script><script src="FnF/fnf-game.js?v=20261017-10"></script><script>
 (() => {
   const palette = ['#f0203d', '#f47700', '#e3b500', '#138b45', '#1265dc', '#783acb', '#d32986'];
   const THEME_KEY = 'madraAI-theme';
