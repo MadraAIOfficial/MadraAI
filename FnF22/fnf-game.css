@@ -1,0 +1,59 @@
+.chat.fnfChatActive{position:relative;display:block;overflow:hidden;padding:10px clamp(10px,2vw,24px)}
+.fnfChatActive>.fnfChatLeaving{position:relative;z-index:1;animation-duration:.46s;animation-timing-function:cubic-bezier(.6,0,.9,.4);animation-fill-mode:forwards}
+.fnfChatActive>.fnfLeaveRight{animation-name:fnfChatSlideRight}
+.fnfChatActive>.fnfLeaveLeft{animation-name:fnfChatSlideLeft}
+.fnfChatActive>.fnfChatLeaving[hidden]{display:none}
+.fnfChatActive>.fnfChatReturning{position:relative;z-index:1;animation-duration:.46s;animation-timing-function:cubic-bezier(.16,.75,.25,1);animation-fill-mode:both}
+.fnfChatActive>.fnfReturnRight{animation-name:fnfChatEnterRight}
+.fnfChatActive>.fnfReturnLeft{animation-name:fnfChatEnterLeft}
+@keyframes fnfChatSlideRight{to{opacity:0;transform:translateX(110vw)}}
+@keyframes fnfChatSlideLeft{to{opacity:0;transform:translateX(-110vw)}}
+@keyframes fnfChatEnterRight{from{opacity:0;transform:translateX(110vw)}to{opacity:1;transform:translateX(0)}}
+@keyframes fnfChatEnterLeft{from{opacity:0;transform:translateX(-110vw)}to{opacity:1;transform:translateX(0)}}
+.app.fnfGamePlaying .compose{animation:fnfComposeDown .46s cubic-bezier(.6,0,.9,.4) both}
+.app.fnfGameReturning .compose{animation:fnfComposeUp .46s cubic-bezier(.16,.75,.25,1) both}
+@keyframes fnfComposeDown{to{opacity:0;transform:translateY(120%)}}
+@keyframes fnfComposeUp{from{opacity:0;transform:translateY(120%)}to{opacity:1;transform:translateY(0)}}
+
+.fnfGameInline{position:absolute;inset:0;z-index:2;min-height:0;color:#f7f7fb;font-family:Rubik,system-ui,sans-serif;visibility:hidden}
+.fnfGameInline.fnfGameReady{visibility:visible;animation:fnfGameEnter .46s cubic-bezier(.16,.75,.25,1) both}
+@keyframes fnfGameEnter{from{opacity:0;transform:translateY(-60vh)}to{opacity:1;transform:translateY(0)}}
+
+.fnfGameInline.fnfGameEnding .fnfCanvas{animation:fnfArrowExitUp .6s ease-in both}
+.fnfGameInline.fnfGameEnding .fnfOpponent{animation:fnfOpponentExit .6s ease-in forwards}
+@keyframes fnfArrowExitUp{to{opacity:0;transform:translateY(-100vh)}}
+
+.fnfPanel,.fnfStage{position:absolute;inset:0;width:100%;height:100%;min-height:0;overflow:hidden;background:transparent}
+.fnfCanvas{position:absolute;inset:0;z-index:1;display:block;pointer-events:none}
+.fnfStage{transform-origin:center;will-change:transform}
+.fnfOpponent{position:absolute;z-index:2;left:clamp(10px,calc(26% - 220px),22vw);bottom:3vh;width:clamp(180px,25vw,320px);height:clamp(220px,40vh,380px);object-fit:contain;object-position:center bottom;opacity:0;pointer-events:none;filter:drop-shadow(0 8px 14px #0008)}
+.fnfOpponent.fnfOpponentExpurgation{left:clamp(20px,calc(30% - 220px),28vw);width:clamp(280px,40vw,520px);height:clamp(340px,58vh,600px)}
+.fnfOpponent.fnfOpponentEntering{animation:fnfOpponentEnter .62s cubic-bezier(.16,.75,.25,1) both}
+@keyframes fnfOpponentEnter{from{opacity:0;transform:translateY(115%)}to{opacity:1;transform:translateY(0)}}
+@keyframes fnfOpponentExit{to{opacity:0;transform:translateY(120%)}}
+.fnfRatingClone{position:absolute;z-index:3;top:clamp(106px,16.5vh,152px);left:calc(50% - 390px);width:min(30vw,180px);max-height:82px;object-fit:contain;pointer-events:none;filter:drop-shadow(0 2px 3px #0009);animation:fnfRatingFall .9s cubic-bezier(.2,.65,.35,1) forwards}
+@keyframes fnfRatingFall{0%{opacity:1;transform:translateY(0) scale(.86)}15%{opacity:1;transform:translateY(0) scale(1)}100%{opacity:0;transform:translateY(82px) scale(.94)}}
+@media(prefers-reduced-motion:reduce){.fnfChatActive>.fnfChatLeaving,.fnfChatActive>.fnfChatReturning,.fnfGameInline.fnfGameEnding .fnfCanvas,.fnfGameInline.fnfGameEnding .fnfOpponent{animation-duration:.01ms}}
+@media(max-width:560px){.fnfRatingClone{top:clamp(86px,15vh,116px);left:4px;width:min(24vw,88px);max-height:54px}.fnfOpponent{left:4px;bottom:2vh;width:clamp(88px,31vw,140px);height:clamp(120px,28vh,210px)}}
+@media(max-width:560px){.fnfOpponent.fnfOpponentExpurgation{left:0;width:min(58vw,250px);height:min(54vh,370px)}}
+body.jebInverted{transform:rotate(180deg);transform-origin:center center}
+
+.fnfSongChoices{display:grid;grid-template-columns:minmax(0,1fr);justify-items:start;gap:8px;margin-top:12px}.fnfSongChoice{min-width:min(240px,100%);text-align:left;border:1px solid var(--border-color,#555);border-radius:10px;padding:10px 16px;background:var(--surface-2,#292a30);color:inherit;font:inherit;font-weight:600;cursor:pointer}.fnfSongChoice:hover:not(:disabled){filter:brightness(1.15)}.fnfSongChoice:disabled{opacity:.6;cursor:wait}
+
+.fnfTimer{position:absolute;z-index:5;top:clamp(12px,2.4vh,26px);left:50%;transform:translateX(-50%);padding:8px 14px;border:1px solid #ffffff35;border-radius:999px;background:#111c;color:#fff;font:600 clamp(14px,1.6vw,20px)/1.2 Rubik,system-ui,sans-serif;font-variant-numeric:tabular-nums;letter-spacing:.04em;pointer-events:none;white-space:nowrap;box-shadow:0 3px 14px #0005}
+
+.fnfExpurgationSign{position:absolute;z-index:4;height:auto;max-height:none;object-fit:contain;opacity:0;pointer-events:none;will-change:transform,opacity;filter:drop-shadow(0 5px 11px #000b)}
+.fnfExpurgationSign.fnfSignStill{animation:fnfSignStill 3.5s cubic-bezier(.16,.74,.25,1) both}
+.fnfExpurgationSign.fnfSignOrbit{animation:fnfSignOrbit 4s cubic-bezier(.16,.74,.25,1) both}
+@keyframes fnfSignStill{0%{opacity:0;transform:translateX(calc(100% + 100vw)) scale(.45) rotate(-12deg)}12%{opacity:1;transform:translateX(0) scale(1) rotate(0)}72%{opacity:1;transform:translateX(0) scale(1) rotate(0)}100%{opacity:0;transform:translateX(calc(100% + 100vw)) scale(.72) rotate(8deg)}}
+@keyframes fnfSignOrbit{0%{opacity:0;transform:translateX(calc(100% + 100vw)) scale(.45) rotate(-12deg)}12%{opacity:1;transform:translate(0,0) scale(1) rotate(0)}28%{opacity:1;transform:translate(15px,-11px) scale(1.02) rotate(2deg)}45%{opacity:1;transform:translate(23px,2px) scale(1) rotate(0)}62%{opacity:1;transform:translate(12px,15px) scale(.99) rotate(-2deg)}78%{opacity:1;transform:translate(-2px,6px) scale(1) rotate(0)}100%{opacity:0;transform:translateX(calc(100% + 100vw)) scale(.72) rotate(12deg)}}
+.fnfPleadFlash{position:absolute;z-index:10000;transform:translate(-50%,-50%);color:#ff1838;font:900 clamp(48px,7.5vw,132px)/.9 "Comic Sans MS","Comic Sans",cursive;letter-spacing:.025em;white-space:nowrap;-webkit-text-stroke:1.5px #85001d;text-shadow:0 0 8px #ff1d45,0 0 24px #ff173d,0 0 52px #ff002e;mix-blend-mode:screen;pointer-events:none;animation:fnfPleadGlitch .48s steps(2,end) forwards}
+@keyframes fnfPleadGlitch{0%{opacity:0;transform:translate(-50%,-50%) scaleX(.75) skewX(-8deg)}8%{opacity:1;transform:translate(calc(-50% - 30px),-50%) scaleX(1.04) skewX(10deg)}18%{opacity:1;transform:translate(calc(-50% + 24px),-50%) scaleX(.98) skewX(-12deg)}29%{opacity:.9;transform:translate(calc(-50% - 19px),-50%) scaleX(1.02) skewX(11deg)}41%{opacity:1;transform:translate(calc(-50% + 28px),-50%) scaleX(1) skewX(-10deg)}55%{opacity:.88;transform:translate(calc(-50% - 25px),-50%) scaleX(1.03) skewX(13deg)}68%{opacity:1;transform:translate(calc(-50% + 16px),-50%) scaleX(.98) skewX(-12deg)}82%{opacity:.75;transform:translate(calc(-50% - 12px),-50%) scaleX(1.01) skewX(8deg)}100%{opacity:0;transform:translate(calc(-50% + 8px),-50%) scale(.94) skewX(-5deg)}}
+.fnfTimer{z-index:10}
+.fnfHazardHitFlash{position:fixed;inset:0;z-index:2147483647;pointer-events:none;background:#f00;animation:fnfHazardHitFlash .1s steps(1,end) forwards}
+@keyframes fnfHazardHitFlash{0%,20%,40%,60%,80%{background:#f00;opacity:1}10%,30%,50%,70%,90%{background:#000;opacity:1}100%{background:#000;opacity:0}}
+@media(prefers-reduced-motion:reduce){.fnfExpurgationSign,.fnfPleadFlash{animation-duration:.01ms}}
+
+.fnfVinciFlyby{position:absolute;z-index:0;top:59%;left:0;width:clamp(190px,34vw,460px);height:auto;max-height:68vh;object-fit:contain;opacity:0;transform:translate(-130%,-50%);pointer-events:none;will-change:left,opacity}
+.fnfVinciFlyby.fnfVinciFlybyActive{animation:fnfVinciCross 1.45s linear both}
+@keyframes fnfVinciCross{0%{left:-55vw;opacity:0}10%{opacity:0}16%{opacity:.95}90%{opacity:.95}100%{left:145vw;opacity:0}}
