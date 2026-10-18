@@ -15,6 +15,11 @@
   ];
 
   const clean = value => String(value || '').toLocaleLowerCase('pl').normalize('NFD').replace(/[\u0300-\u036f]/gu, '').replace(/[^a-z0-9]+/gu, ' ').trim();
+  const fetchGameResource = (url, options = {}) => {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 20000);
+    return fetch(url, { ...options, signal: controller.signal }).finally(() => clearTimeout(timeout));
+  };
 
   function matchesRequest(value) {
     const text = clean(value);
@@ -189,6 +194,19 @@
       : [opponentImages.idle];
 
     let audioCtx = null;
+    let audioResumeAttempt = Promise.resolve(false);
+    try {
+      const AudioContextType = window.AudioContext || window.webkitAudioContext;
+      if (AudioContextType) {
+        audioCtx = new AudioContextType();
+        audioResumeAttempt = audioCtx.resume().then(() => true, error => {
+          console.warn('[Orzech 2.2][FNF] audio context did not resume on song selection', error);
+          return false;
+        });
+      }
+    } catch (error) {
+      console.warn('[Orzech 2.2][FNF] audio context could not be created', error);
+    }
     let instBuffer = null;
     let voiceBuffers = [];
     let instSource = null;
@@ -525,6 +543,15 @@
       overlay.remove();
     }
 
+    function reportStartupFailure(error) {
+      console.error('[Orzech 2.2][FNF] startup failed', error);
+      dispose();
+      if (typeof window.add === 'function') {
+        const detail = error?.message ? ` Szczegóły: ${error.message}` : '';
+        window.add(`Nie udało się uruchomić piosenki „${selectedSong.title}”.${detail}`, 'bot');
+      }
+    }
+
     function showResult(resultMessage = '') {
       const accuracy = totalNotes ? (accuracyPoints / totalNotes * 100).toFixed(2) : '0.00';
       const text = resultMessage || `Piosenka dobiegła końca! Wynik: ${score} punktów, pudła: ${misses}, celność: ${accuracy}%.`;
@@ -676,16 +703,18 @@
         nextSignSpawnAt = 0;
         notes.forEach(note => { note.hit = false; note.missed = false; });
 
-        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-        if (audioCtx.state === 'suspended') {
-          await audioCtx.resume();
-        }
+        if (!audioCtx) throw new Error('Ta przeglądarka nie udostępnia Web Audio API.');
+        const audioReady = await Promise.race([
+          audioResumeAttempt,
+          new Promise(resolve => setTimeout(() => resolve(false), 5000))
+        ]);
+        if (!audioReady || audioCtx.state !== 'running') throw new Error('Przeglądarka zablokowała dźwięk. Wybierz piosenkę ponownie i zezwól na odtwarzanie audio.');
 
         const audioFiles = selectedSong.audioFile
           ? [selectedSong.audioFile]
           : ['Inst.ogg', ...selectedSong.voiceFiles];
         const audioResponses = await Promise.all(audioFiles.map(file =>
-          fetch(new URL(`FnF22/songs/${selectedSong.folder}/${file}`, document.baseURI))
+          fetchGameResource(new URL(`FnF22/songs/${selectedSong.folder}/${file}`, document.baseURI))
         ));
         if (audioResponses.some(response => !response.ok)) throw new Error('Nie udało się wczytać audio piosenki.');
         const audioData = await Promise.all(audioResponses.map(response => response.arrayBuffer()));
@@ -738,12 +767,11 @@
         opponentNoteIndex = 0;
         raf = requestAnimationFrame(tick);
       } catch (err) {
-        console.error(err);
-        dispose();
+        reportStartupFailure(err);
       }
     }
 
-    fetch(new URL(`FnF22/songs/${selectedSong.folder}/chart.json`, document.baseURI), { cache: 'force-cache' })
+    fetchGameResource(new URL(`FnF22/songs/${selectedSong.folder}/chart.json`, document.baseURI), { cache: 'force-cache' })
       .then(response => { if (!response.ok) throw new Error('Nie udało się wczytać chartu.'); return response.json(); })
       .then(data => {
         const song = data.song;
@@ -796,7 +824,7 @@
         window.addEventListener('resize', resizeHandler, { passive: true });
         beginSong();
       })
-      .catch(() => dispose());
+      .catch(error => reportStartupFailure(error));
 
     return { close: dispose };
   }
