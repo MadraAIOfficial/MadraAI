@@ -15,6 +15,11 @@
   ];
 
   const clean = value => String(value || '').toLocaleLowerCase('pl').normalize('NFD').replace(/[\u0300-\u036f]/gu, '').replace(/[^a-z0-9]+/gu, ' ').trim();
+  const fetchGameResource = (url, options = {}) => {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 20000);
+    return fetch(url, { ...options, signal: controller.signal }).finally(() => clearTimeout(timeout));
+  };
 
   function matchesRequest(value) {
     const text = clean(value);
@@ -391,7 +396,7 @@
           await audioCtx.resume();
         }
 
-        const [instRes, voicesRes] = await Promise.all([          fetch(new URL('FnF/Inst.ogg', document.baseURI)),          fetch(new URL('FnF/Voices.ogg', document.baseURI))        ]);
+        const [instRes, voicesRes] = await Promise.all([          fetchGameResource(new URL('FnF/Inst.ogg', document.baseURI)),          fetchGameResource(new URL('FnF/Voices.ogg', document.baseURI))        ]);
         const [instData, voicesData] = await Promise.all([          instRes.arrayBuffer(),          voicesRes.arrayBuffer()        ]);
 
         [instBuffer, voicesBuffer] = await Promise.all([          audioCtx.decodeAudioData(instData),          audioCtx.decodeAudioData(voicesData)        ]);
@@ -429,10 +434,11 @@
       } catch (err) {
         console.error(err);
         dispose();
+        if (typeof window.add === 'function') window.add(`Nie udało się uruchomić gry FNF. Szczegóły: ${err?.message || 'błąd ładowania zasobów.'}`, 'bot');
       }
     }
 
-    fetch(new URL('FnF/chart.json', document.baseURI), { cache: 'force-cache' })
+    fetchGameResource(new URL('FnF/chart.json', document.baseURI), { cache: 'force-cache' })
       .then(response => { if (!response.ok) throw new Error('Nie udało się wczytać chartu.'); return response.json(); })
       .then(data => {
         const song = data.song;
@@ -478,7 +484,11 @@
         window.addEventListener('resize', resizeHandler, { passive: true });
         beginSong();
       })
-      .catch(() => dispose());
+      .catch(error => {
+        console.error('[FNF] chart load failed', error);
+        dispose();
+        if (typeof window.add === 'function') window.add(`Nie udało się wczytać chartu FNF. Szczegóły: ${error?.message || 'sprawdź pliki gry.'}`, 'bot');
+      });
 
     return { close: dispose };
   }
