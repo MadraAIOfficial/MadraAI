@@ -1,6 +1,12 @@
 {
   "posts": [
     {
+      "title": "Kolejny model wydany! Orzech 2.2",
+      "text": "Więcej gier, lepsze odpowiedzi i ulepszenie języka angielskiego. Teraz z MądrąAI się nie znudzisz, wypróbuj model Orzech 2.2 już teraz.",
+      "date": "15 października 2026",
+      "important": true
+    },
+    {
       "title": "Orzech 2.1 już wyszedł!",
       "text": "Orzech 2.1 właśnie został opublikowany, lecz tym razem zamiast skupić się na trenowaniu AI dodaliśmy kilka eastereggów! Zaproś MądraAI do wspólnego zagrania w Friday Night Funkin' pytając, czy chce zagrać w FNFa lub napisz do niej /jeb, /rainbow lub /break. Tak jak zawsze, nowy model dostał kilka poprawek dotyczących myślenia i odpowiadania, lecz tym razem skupiliśmy się głównie na tych ukrytych mechanikach. Wypróbuj MądraAI Orzech 2.1 już dziś!",
       "date": "17 października 2026",
