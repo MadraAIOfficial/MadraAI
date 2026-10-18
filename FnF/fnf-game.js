@@ -18,7 +18,9 @@
 
   function matchesRequest(value) {
     const text = clean(value);
-    return /\b(?:zagrajmy|gramy|zagraj|pogramy|zagramy)\b/u.test(text) && /\b(?:fnf|fnfa|friday\s+night\s+funkin)\b/u.test(text);
+    const asksToPlay = /\b(?:zagrajmy|gramy|zagraj|zagrac|pogramy|pogram|zagramy|mozemy|chcesz|chce|play|playing|lets|start)\b/u.test(text);
+    const namesFnf = /\b(?:fnf|fnfa|friday\s+night\s+funkin)\b/u.test(text);
+    return asksToPlay && namesFnf;
   }
 
   function mount(container) {
