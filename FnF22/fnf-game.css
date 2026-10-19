@@ -10,7 +10,8 @@
 @keyframes fnfChatSlideLeft{to{opacity:0;transform:translateX(-110vw)}}
 @keyframes fnfChatEnterRight{from{opacity:0;transform:translateX(110vw)}to{opacity:1;transform:translateX(0)}}
 @keyframes fnfChatEnterLeft{from{opacity:0;transform:translateX(-110vw)}to{opacity:1;transform:translateX(0)}}
-.app.fnfGamePlaying .compose{animation:fnfComposeDown .46s cubic-bezier(.6,0,.9,.4) both}
+body.fnfGameInteractionLocked :is(button,select,a,input,textarea,[role="button"]){pointer-events:none!important;cursor:not-allowed!important}
+body.fnfGameInteractionLocked :is(.top,.sideNav){filter:grayscale(.55);opacity:.58}.app.fnfGamePlaying .compose{animation:fnfComposeDown .46s cubic-bezier(.6,0,.9,.4) both}
 .app.fnfGameReturning .compose{animation:fnfComposeUp .46s cubic-bezier(.16,.75,.25,1) both}
 @keyframes fnfComposeDown{to{opacity:0;transform:translateY(120%)}}
 @keyframes fnfComposeUp{from{opacity:0;transform:translateY(120%)}to{opacity:1;transform:translateY(0)}}
