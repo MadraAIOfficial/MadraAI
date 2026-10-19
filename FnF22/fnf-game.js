@@ -104,7 +104,7 @@
     const overlay = document.createElement('section');
     overlay.className = 'fnfGameInline';
     overlay.innerHTML = '<div class="fnfPanel"><div class="fnfStage" aria-label="Strzałki gry rytmicznej"><div class="fnfTimer" role="timer">0:00/0:00</div><canvas class="fnfCanvas" aria-hidden="true"></canvas><img class="fnfOpponent" alt="" draggable="false"></div></div></div>';
-    const chatRows = [...container.querySelectorAll('.message')];
+    const chatRows = [...container.querySelectorAll('.message:not([hidden])')];
     const app = container.closest('.app');
     let interactionLocked = false;
     const blockLockedPointer = event => {
@@ -190,9 +190,9 @@
       sign.style.height = height + 'px';
       const selectedRatio = Number(sign.dataset.expurgationXRatio);
       const leftNudge = Math.min(14, Math.max(8, stageWidth * .01));
-      const left = Number.isFinite(selectedRatio)
+      const left = (Number.isFinite(selectedRatio)
         ? selectedRatio * stageWidth - leftNudge
-        : Math.max(0, stageWidth - width - expurgationSignRightInset) - leftNudge;
+        : Math.max(0, stageWidth - width - expurgationSignRightInset) - leftNudge) - stageWidth * .24;
       sign.style.left = left + 'px';
       sign.style.top = top + 'px';
     }
@@ -780,8 +780,25 @@
         app?.classList.add('fnfGamePlaying');
         setInteractionLock(true);
         chatRows.forEach(row => {
-          row.classList.add('fnfChatLeaving', row.classList.contains('user') ? 'fnfLeaveRight' : 'fnfLeaveLeft');
-          row.addEventListener('animationend', () => { row.hidden = true; }, { once: true });
+          const directionClass = row.classList.contains('user') ? 'fnfLeaveRight' : 'fnfLeaveLeft';
+          const expectedAnimation = row.classList.contains('user') ? 'fnfChatSlideRight' : 'fnfChatSlideLeft';
+          row.hidden = false;
+          row.classList.remove('fnfChatLeaving', 'fnfLeaveRight', 'fnfLeaveLeft', 'fnfChatReturning', 'fnfReturnRight', 'fnfReturnLeft');
+          row.style.animation = 'none';
+          void row.offsetWidth;
+          row.style.removeProperty('animation');
+          const hideAfterSlide = event => {
+            if (event.target !== row || event.animationName !== expectedAnimation) return;
+            row.hidden = true;
+            row.removeEventListener('animationend', hideAfterSlide);
+          };
+          row.addEventListener('animationend', hideAfterSlide);
+          row.classList.add('fnfChatLeaving', directionClass);
+          void row.offsetWidth;
+          setTimeout(() => {
+            if (!row.hidden && row.classList.contains('fnfChatLeaving') && container.classList.contains('fnfChatActive')) row.hidden = true;
+            row.removeEventListener('animationend', hideAfterSlide);
+          }, 520);
         });
         await new Promise(resolve => setTimeout(resolve, 460));
         if (disposed || !overlay.isConnected) return;
