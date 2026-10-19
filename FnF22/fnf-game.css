@@ -6,6 +6,10 @@
 .fnfChatActive>.fnfChatReturning{position:relative;z-index:1;animation-duration:.46s;animation-timing-function:cubic-bezier(.16,.75,.25,1);animation-fill-mode:both}
 .fnfChatActive>.fnfReturnRight{animation-name:fnfChatEnterRight}
 .fnfChatActive>.fnfReturnLeft{animation-name:fnfChatEnterLeft}
+.chat.fnfChatActive>.message.fnfChatLeaving.fnfLeaveRight{animation:fnfChatSlideRight .46s cubic-bezier(.6,0,.9,.4) forwards!important}
+.chat.fnfChatActive>.message.fnfChatLeaving.fnfLeaveLeft{animation:fnfChatSlideLeft .46s cubic-bezier(.6,0,.9,.4) forwards!important}
+.chat.fnfChatActive>.message.fnfChatReturning.fnfReturnRight{animation:fnfChatEnterRight .46s cubic-bezier(.16,.75,.25,1) both!important}
+.chat.fnfChatActive>.message.fnfChatReturning.fnfReturnLeft{animation:fnfChatEnterLeft .46s cubic-bezier(.16,.75,.25,1) both!important}
 @keyframes fnfChatSlideRight{to{opacity:0;transform:translateX(110vw)}}
 @keyframes fnfChatSlideLeft{to{opacity:0;transform:translateX(-110vw)}}
 @keyframes fnfChatEnterRight{from{opacity:0;transform:translateX(110vw)}to{opacity:1;transform:translateX(0)}}
