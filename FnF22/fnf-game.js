@@ -28,23 +28,11 @@
     return asksToPlay && namesFnf;
   }
 
-  const SIGN_SETTINGS_KEY = 'madraFnF22ExpurgationSignSettings';
-  function readSignSettings() {
-    try {
-      const value = JSON.parse(localStorage.getItem(SIGN_SETTINGS_KEY) || 'null');
-      if (!value || !Number.isFinite(value.widthRatio) || !Number.isFinite(value.rightXRatio) || !Number.isFinite(value.leftXRatio)) return null;
-      const widthRatio = Math.max(.25, Math.min(.8, value.widthRatio));
-      const oldCoordinateScale = value.coordinateMode === 'screen-edge' ? 1 : 1 - widthRatio;
-      return {
-        widthRatio,
-        rightXRatio: Math.max(-widthRatio / 2, Math.min(1 - widthRatio / 2, value.rightXRatio * oldCoordinateScale)),
-        leftXRatio: Math.max(-widthRatio / 2, Math.min(1 - widthRatio / 2, value.leftXRatio * oldCoordinateScale)),
-        coordinateMode: 'screen-edge'
-      };
-    } catch { return null; }
-  }
+  // Stały układ znaków: szerokość sceny × 80%, ruch X od lewej krawędzi do
+  // pozycji 8 px przed prawą krawędzią. Bez ustawień zależnych od domeny.
+  const EXPURGATION_SIGN_LAYOUT = Object.freeze({ widthRatio: .8, rightInset: 8 });
 
-    const SONGS = {
+  const SONGS = {
     madness: { title: 'Madness', folder: 'madness', audioFile: 'Voices.mp3', voiceFiles: [] },
     expurgation: { title: 'Expurgation', folder: 'expurgation', voiceFiles: ['Voices.ogg'], speedMultiplier: 1.3 },
     dorito: { title: 'Dorito', folder: 'dorito', voiceFiles: ['Voices.ogg'] },
@@ -105,8 +93,75 @@
     const overlay = document.createElement('section');
     overlay.className = 'fnfGameInline';
     overlay.innerHTML = '<div class="fnfPanel"><div class="fnfStage" aria-label="Strzałki gry rytmicznej"><div class="fnfTimer" role="timer">0:00/0:00</div><canvas class="fnfCanvas" aria-hidden="true"></canvas><img class="fnfOpponent" alt="" draggable="false"></div></div></div>';
-    const chatRows = [...container.querySelectorAll('.message')];
+    const chatRows = [...container.querySelectorAll('.message:not([hidden])')];
     const app = container.closest('.app');
+    const chatAnimations = new Set();
+    let chatAnimationGeneration = 0;
+    let interactionLocked = false;
+    const blockLockedPointer = event => {
+      if (!interactionLocked) return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+    };
+    const blockLockedKeyboard = event => {
+      if (!interactionLocked) return;
+      const isLaneKey = KEY_LANES.has(event.code) || KEY_LANES.has(event.key);
+      if (active && (event.key === 'Escape' || isLaneKey)) return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+    };
+    const blockLockedSubmit = event => {
+      if (!interactionLocked) return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+    };
+    function setInteractionLock(locked) {
+      if (interactionLocked === locked) return;
+      interactionLocked = locked;
+      document.body.classList.toggle('fnfGameInteractionLocked', locked);
+      if (locked) {
+        document.addEventListener('pointerdown', blockLockedPointer, true);
+        document.addEventListener('click', blockLockedPointer, true);
+        document.addEventListener('keydown', blockLockedKeyboard, true);
+        document.addEventListener('submit', blockLockedSubmit, true);
+      } else {
+        document.removeEventListener('pointerdown', blockLockedPointer, true);
+        document.removeEventListener('click', blockLockedPointer, true);
+        document.removeEventListener('keydown', blockLockedKeyboard, true);
+        document.removeEventListener('submit', blockLockedSubmit, true);
+      }
+    }
+    async function animateChatRows(direction) {
+      const generation = ++chatAnimationGeneration;
+      const reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+      const duration = reducedMotion ? 1 : 460;
+      await Promise.all(chatRows.map(async row => {
+        row.hidden = false;
+        row.classList.remove('fnfChatLeaving', 'fnfLeaveRight', 'fnfLeaveLeft', 'fnfChatReturning', 'fnfReturnRight', 'fnfReturnLeft');
+        const side = row.classList.contains('user') ? 1 : -1;
+        const distance = Math.max(window.innerWidth, document.documentElement.clientWidth) + row.getBoundingClientRect().width + 32;
+        const offset = side * distance;
+        const frames = direction === 'out'
+          ? [{ opacity: 1, transform: 'translateX(0)' }, { opacity: 0, transform: 'translateX(' + offset + 'px)' }]
+          : [{ opacity: 0, transform: 'translateX(' + offset + 'px)' }, { opacity: 1, transform: 'translateX(0)' }];
+        const animation = row.animate(frames, {
+          duration,
+          easing: direction === 'out' ? 'cubic-bezier(.6,0,.9,.4)' : 'cubic-bezier(.16,.75,.25,1)',
+          fill: 'forwards'
+        });
+        chatAnimations.add(animation);
+        try { await animation.finished; } catch {}
+        chatAnimations.delete(animation);
+        animation.cancel();
+        if (generation !== chatAnimationGeneration || !row.isConnected) return;
+        row.hidden = direction === 'out';
+      }));
+    }
+    function cancelChatAnimations() {
+      chatAnimationGeneration++;
+      for (const animation of chatAnimations) animation.cancel();
+      chatAnimations.clear();
+    }
     container.append(overlay);
 
     const stage = overlay.querySelector('.fnfStage');
@@ -122,11 +177,8 @@
     }
     const timer = overlay.querySelector('.fnfTimer');
     const hasSignMechanic = selectedSong.folder === 'expurgation';
-    const expurgationSignBaseSize = 1300;
-    const expurgationSignRightInset = 48;
-    const signPoleStart = 172 / 1280;
     const signPoleCenterY = 96 / 194;
-    const expurgationSignSettings = hasSignMechanic ? readSignSettings() : null;
+    const expurgationSignSettings = hasSignMechanic ? EXPURGATION_SIGN_LAYOUT : null;
     const expurgationSignImage = hasSignMechanic ? new Image() : null;
     if (expurgationSignImage) expurgationSignImage.src = new URL('FnF22/expurgationsign.png', document.baseURI).href;
     const opponent = overlay.querySelector('.fnfOpponent');
@@ -139,11 +191,8 @@
     const activeNotes = new Set();
     const activeSigns = new Set();
     function expurgationSignWidth() {
-      if (expurgationSignSettings) return Math.max(1, Math.min(stageWidth - 8, stageWidth * expurgationSignSettings.widthRatio));
-      const firstArrowEdge = laneX(0) - arrowSize / 2;
-      const widthNeededToCoverLanes = (stageWidth - expurgationSignRightInset - firstArrowEdge) / (1 - signPoleStart);
-      const availableWidth = Math.max(1, stageWidth - expurgationSignRightInset);
-      return Math.min(availableWidth, Math.max(expurgationSignBaseSize, widthNeededToCoverLanes));
+      const availableWidth = Math.max(1, stageWidth - expurgationSignSettings.rightInset);
+      return Math.min(availableWidth, Math.max(1, stageWidth * expurgationSignSettings.widthRatio));
     }
     function placeExpurgationSign(sign) {
       const width = expurgationSignWidth();
@@ -156,10 +205,9 @@
       sign.style.width = `${width}px`;
       sign.style.height = `${height}px`;
       const selectedRatio = Number(sign.dataset.expurgationXRatio);
-      const leftNudge = Math.min(14, Math.max(8, stageWidth * .01));
-      const left = Number.isFinite(selectedRatio)
-        ? selectedRatio * stageWidth - leftNudge
-        : Math.max(0, stageWidth - width - expurgationSignRightInset) - leftNudge;
+      const maxLeft = Math.max(0, stageWidth - width - expurgationSignSettings.rightInset);
+      const travelRatio = Number.isFinite(selectedRatio) ? Math.max(0, Math.min(1, selectedRatio)) : 1;
+      const left = travelRatio * maxLeft;
       sign.style.left = `${left}px`;
       sign.style.top = `${top}px`;
     }
@@ -222,6 +270,7 @@
     let resizeHandler = null;
     let active = false;
     let ended = false;
+    let disposed = false;
     let score = 0;
     let combo = 0;
     let misses = 0;
@@ -319,12 +368,7 @@
       sign.src = expurgationSignImage.src;
       sign.alt = '';
       sign.draggable = false;
-      if (expurgationSignSettings) {
-        const minRatio = Math.min(expurgationSignSettings.leftXRatio, expurgationSignSettings.rightXRatio);
-        const maxRatio = Math.max(expurgationSignSettings.leftXRatio, expurgationSignSettings.rightXRatio);
-        sign.dataset.expurgationXRatio = String(minRatio + Math.random() * (maxRatio - minRatio));
-      }
-      sign.dataset.expurgationYRatio = String(Math.random());
+      sign.dataset.expurgationXRatio = String(Math.random());      sign.dataset.expurgationYRatio = String(Math.random());
       const lifetime = 2000 + Math.random() * 2000;
       placeExpurgationSign(sign);
       sign.style.animationDuration = `${lifetime}ms`;
@@ -528,6 +572,10 @@
     }
     function dispose() {
       active = false;
+      disposed = true;
+      setInteractionLock(false);
+      cancelChatAnimations();
+      chatRows.forEach(row => { row.hidden = false; });
       cancelAnimationFrame(raf);
       cancelAnimationFrame(entryRaf);
       if (resizeHandler) window.removeEventListener('resize', resizeHandler);
@@ -575,22 +623,19 @@
       stopAudio();
       clearTimeout(pleadInterval);
       overlay.classList.add('fnfGameEnding');
-      setTimeout(() => {
+      setTimeout(async () => {
+        if (disposed) return;
         if (resizeHandler) window.removeEventListener('resize', resizeHandler);
         overlay.remove();
         app?.classList.remove('fnfGamePlaying');
         app?.classList.add('fnfGameReturning');
-        chatRows.forEach(row => {
-          row.hidden = false;
-          row.classList.remove('fnfChatLeaving', 'fnfLeaveRight', 'fnfLeaveLeft');
-          row.classList.add('fnfChatReturning', row.classList.contains('user') ? 'fnfReturnRight' : 'fnfReturnLeft');
-        });
-        setTimeout(() => {
-          app?.classList.remove('fnfGameReturning');
-          container.classList.remove('fnfChatActive');
-          chatRows.forEach(row => row.classList.remove('fnfChatReturning', 'fnfReturnRight', 'fnfReturnLeft'));
-          showResult(resultMessage);
-        }, 480);
+        await animateChatRows('in');
+        if (disposed) return;
+        app?.classList.remove('fnfGameReturning');
+        container.classList.remove('fnfChatActive');
+        chatRows.forEach(row => row.classList.remove('fnfChatReturning', 'fnfReturnRight', 'fnfReturnLeft'));
+        setInteractionLock(false);
+        showResult(resultMessage);
       }, 700);
     }
 
@@ -737,12 +782,9 @@
 
         container.classList.add('fnfChatActive');
         app?.classList.add('fnfGamePlaying');
-        chatRows.forEach(row => {
-          row.classList.add('fnfChatLeaving', row.classList.contains('user') ? 'fnfLeaveRight' : 'fnfLeaveLeft');
-          row.addEventListener('animationend', () => { row.hidden = true; }, { once: true });
-        });
-        await new Promise(resolve => setTimeout(resolve, 460));
-        if (!overlay.isConnected) return;
+        setInteractionLock(true);
+        await animateChatRows('out');
+        if (disposed || !overlay.isConnected) return;
 
         // Start the visual intro only after every sprite and both audio tracks are ready.
         overlay.classList.add('fnfGameReady');
